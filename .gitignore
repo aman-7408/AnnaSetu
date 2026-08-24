@@ -1,0 +1,16 @@
+# Logs
+logs
+*.log
+
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Environment variables (CRITICAL)
+.env
+backend/.env
+frontend/.env
+
+# macOS specific
+.DS_Store
