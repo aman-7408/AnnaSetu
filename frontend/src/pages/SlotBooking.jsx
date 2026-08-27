@@ -240,7 +240,6 @@ export default function SlotBooking() {
         plot_number: '---',
         address: '---'
       });
-    }
   };
 
   const syncFarmerPassesFromServer = async (aadhar) => {
