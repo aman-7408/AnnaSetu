@@ -251,22 +251,21 @@ export default function SlotBooking() {
           return;
         }
       }
-    } catch {}
+    } catch (err) {
+      console.error('API Error during farmer lookup:', err);
+    }
 
+    // STRICT PRODUCTION MODE (Option B)
+    // If we reach here, the Aadhaar was not found in the live database.
+    // We allow explicit hardcoded demo accounts for presentation, but block all others.
     const demo = DEMO_FARMERS.find(d => d.aadhar === aadhar);
     if (demo) {
       setSelectedFarmer(demo);
+      syncFarmerPassesFromServer(aadhar);
     } else {
-      setSelectedFarmer({
-        name: 'Kisan Beneficiary',
-        aadhar: aadhar,
-        phone: '+91 98000 00000',
-        land_size: '3.5 Acres',
-        plot_number: 'PL-REG-NEW',
-        address: 'District Agro Zone'
-      });
+      setErrorMessage('Aadhaar not found. Please register in AnnaSetu first.');
+      setSelectedFarmer(null);
     }
-    syncFarmerPassesFromServer(aadhar);
   };
 
   const syncFarmerPassesFromServer = async (aadhar) => {
