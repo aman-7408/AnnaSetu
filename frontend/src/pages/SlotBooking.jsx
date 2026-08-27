@@ -111,7 +111,7 @@ export default function SlotBooking() {
 
   // Booking Form State
   const [selectedFarmer, setSelectedFarmer] = useState({ name: 'Unregistered', aadhar: '', phone: '---', land_size: '---', plot_number: '---', address: '---' });
-  const [aadharInput, setAadharInput] = useState(DEMO_FARMERS[0].aadhar);
+  const [aadharInput, setAadharInput] = useState('');
   const [selectedCentre, setSelectedCentre] = useState(FALLBACK_CENTRES[0]);
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedSlot, setSelectedSlot] = useState(() => getDefaultSlotsForCentre(FALLBACK_CENTRES[0])[0]);
