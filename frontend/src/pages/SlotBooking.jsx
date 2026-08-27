@@ -433,10 +433,12 @@ export default function SlotBooking() {
   const farmerPasses = Array.from(
     new Map(
       allPasses
-        .filter(p => p.farmer_aadhar === selectedFarmer.aadhar)
+        .filter(p => p.farmer_aadhar === selectedFarmer?.aadhar)
         .map(p => [p.token_id, p])
     ).values()
   );
+
+  const isVerified = Boolean(selectedFarmer && selectedFarmer.name !== 'Unregistered');
 
   return (
     <div className="py-8 px-4 sm:px-6 max-w-6xl mx-auto font-sans">
@@ -762,6 +764,15 @@ export default function SlotBooking() {
                 )}
               </div>
 
+              {/* === THE HIDDEN VERIFICATION VAULT === */}
+              <div 
+                className={`transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] transform origin-top ${
+                  isVerified 
+                    ? 'opacity-100 translate-y-0 scale-y-100 max-h-[3000px] mt-8 pointer-events-auto' 
+                    : 'opacity-0 translate-y-12 scale-y-95 max-h-0 overflow-hidden mt-0 pointer-events-none'
+                }`}
+              >
+              
               {/* Mandi Selection Card */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -868,6 +879,8 @@ export default function SlotBooking() {
                     <span>➔</span>
                   </button>
                 </div>
+              </div>
+              {/* === END VERIFICATION VAULT === */}
               </div>
             </div>
           )}
