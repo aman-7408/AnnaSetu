@@ -4,6 +4,7 @@ import Home from './pages/Home';
 import Registration from './pages/Registration';
 import AdminConsole from './pages/AdminConsole';
 import AdminLoginModal from './components/AdminLoginModal';
+import ProcurementTracker from './pages/ProcurementTracker';
 
 function NavigationBar({ userSession, onAdminClick }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -27,6 +28,7 @@ function NavigationBar({ userSession, onAdminClick }) {
         
         <ul className="hidden md:flex space-x-6 text-sm font-medium items-center">
           <li><Link to="/register" className="cursor-pointer hover:text-green-200 transition-colors">Register</Link></li>
+          <li><Link to="/procurement" className="cursor-pointer hover:text-green-200 transition-colors">Procurement</Link></li>
           <li className="cursor-pointer hover:text-green-200 transition-colors">Book Slot</li>
           <li className="cursor-pointer hover:text-green-200 transition-colors">Notifications</li>
           
@@ -66,6 +68,7 @@ function NavigationBar({ userSession, onAdminClick }) {
       {isMenuOpen && (
         <div className="md:hidden bg-brand-dark px-4 pt-2 pb-4 space-y-2 shadow-inner border-t border-brand">
           <Link to="/register" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Register</Link>
+          <Link to="/procurement" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Procurement Tracker</Link>
           <div className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer">Book Slot</div>
           <div className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer">Notifications</div>
           <button 
@@ -134,6 +137,8 @@ function MainLayout() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/register" element={<Registration />} />
+            <Route path="/procurement" element={<ProcurementTracker />} />
+            <Route path="/tracker" element={<ProcurementTracker />} />
             <Route 
               path="/admin" 
               element={

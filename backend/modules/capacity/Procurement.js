@@ -36,4 +36,4 @@ const procurementSchema = new mongoose.Schema({
   updated_at: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('Procurement', procurementSchema);
+module.exports = mongoose.models.Procurement || mongoose.model('Procurement', procurementSchema);
