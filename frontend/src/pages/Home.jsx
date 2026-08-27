@@ -6,8 +6,13 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-      <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-8 border-4 border-brand shadow-md">
-        <span className="text-gray-400 font-bold tracking-widest">LOGO</span>
+      <div className="w-36 h-36 bg-white rounded-full flex items-center justify-center mb-8 border-4 border-brand shadow-xl p-2 overflow-hidden transform hover:scale-105 transition-transform duration-300">
+        <img 
+          src="/logo.png" 
+          alt="AnnaSetu Official Logo" 
+          className="w-full h-full object-cover rounded-full"
+          style={{ imageRendering: '-webkit-optimize-contrast' }}
+        />
       </div>
       
       <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4 tracking-tight shadow-sm">
