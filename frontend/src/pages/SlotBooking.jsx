@@ -442,7 +442,7 @@ export default function SlotBooking() {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-700/60 border border-emerald-500/40 rounded-full text-xs font-semibold uppercase tracking-wider text-emerald-200 mb-3">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                MODULE 2: TOKEN & SLOT ENGINE
+                TOKEN & SLOT ENGINE
               </div>
               <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
                 Mandi Slot Booking & Digital Gate Pass
@@ -670,7 +670,7 @@ export default function SlotBooking() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                     <span className="p-1.5 bg-emerald-100 text-emerald-800 rounded-lg text-sm">👤</span>
-                    Farmer Identity & Land Records (Module 1 Validation)
+                    Farmer Identity & Land Records (Aadhaar Verified)
                   </h2>
                   <span className="text-xs font-bold px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
                     Aadhaar Verified
@@ -755,7 +755,7 @@ export default function SlotBooking() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                     <span className="p-1.5 bg-amber-100 text-amber-800 rounded-lg text-sm">🏢</span>
-                    Select Procurement Mandi Terminal (Module 4 Capacity Live Feed)
+                    Select Procurement Mandi Terminal (Live Capacity Feed)
                   </h2>
                   <span className="text-xs font-bold text-gray-500">{centres.length} National Centres Active</span>
                 </div>
