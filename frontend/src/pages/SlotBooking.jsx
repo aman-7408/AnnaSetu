@@ -115,21 +115,16 @@ function getDefaultSlotsForCentre(centre, date) {
   ];
 }
 
-const INITIAL_DEMO_PASSES = [
-  {
-    token_id: 'AS-2026-WHT-7821',
-    farmer_aadhar: '123456789012',
-    farmer_name: 'Aman Kumar',
-    farmer_phone: '+91 98765 43210',
-    centre_name: 'Meerut Central Agro Warehouse',
-    booking_date: new Date().toISOString().split('T')[0],
-    slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)',
-    crop_type: 'Wheat (Sharbati A-Grade)',
-    estimated_weight_quintals: 45,
-    status: 'CONFIRMED',
-    created_at: new Date().toISOString()
-  }
-];
+const getStoredPasses = () => {
+  try {
+    const raw = localStorage.getItem('annasetu_farmer_passes');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+};
 
 export default function SlotBooking() {
   const [activeTab, setActiveTab] = useState('book'); // 'book' | 'passes'
@@ -154,8 +149,8 @@ export default function SlotBooking() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Farmer's Existing Passes
-  const [myPasses, setMyPasses] = useState(INITIAL_DEMO_PASSES);
+  // Farmer's Passes from LocalStorage + Server
+  const [allPasses, setAllPasses] = useState(() => getStoredPasses());
   const [loadingPasses, setLoadingPasses] = useState(false);
   const [activePassModal, setActivePassModal] = useState(null);
 
@@ -189,7 +184,7 @@ export default function SlotBooking() {
         }
       }
     } catch {
-      // Fallback data already active
+      // Fallback data is active
     } finally {
       setLoadingCentres(false);
     }
@@ -252,12 +247,11 @@ export default function SlotBooking() {
             plot_number: match.plot_number || 'N/A',
             address: match.address
           });
+          syncFarmerPassesFromServer(aadhar);
           return;
         }
       }
-    } catch {
-      // Handled in demo lookup
-    }
+    } catch {}
 
     const demo = DEMO_FARMERS.find(d => d.aadhar === aadhar);
     if (demo) {
@@ -272,9 +266,10 @@ export default function SlotBooking() {
         address: 'District Agro Zone'
       });
     }
+    syncFarmerPassesFromServer(aadhar);
   };
 
-  const fetchFarmerPasses = async (aadhar) => {
+  const syncFarmerPassesFromServer = async (aadhar) => {
     if (!aadhar) return;
     try {
       setLoadingPasses(true);
@@ -287,12 +282,17 @@ export default function SlotBooking() {
       if (res && res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.bookings) && data.bookings.length > 0) {
-          setMyPasses(data.bookings);
-          return;
+          setAllPasses(prev => {
+            const map = new Map();
+            data.bookings.forEach(p => map.set(p.token_id, p));
+            prev.forEach(p => map.set(p.token_id, p));
+            const merged = Array.from(map.values());
+            try { localStorage.setItem('annasetu_farmer_passes', JSON.stringify(merged)); } catch {}
+            return merged;
+          });
         }
       }
-    } catch (err) {
-      console.error('Failed to fetch passes:', err);
+    } catch {
     } finally {
       setLoadingPasses(false);
     }
@@ -358,9 +358,7 @@ export default function SlotBooking() {
             bookingSaved = data.booking;
           }
         }
-      } catch {
-        // Fallback local pass
-      }
+      } catch {}
 
       if (!bookingSaved) {
         const cropCode = selectedCrop.code || 'WHT';
@@ -381,7 +379,14 @@ export default function SlotBooking() {
       }
 
       setActivePassModal(bookingSaved);
-      setMyPasses(prev => [bookingSaved, ...prev.filter(p => p.token_id !== bookingSaved.token_id)]);
+      setAllPasses(prev => {
+        const map = new Map();
+        map.set(bookingSaved.token_id, bookingSaved);
+        prev.forEach(p => map.set(p.token_id, p));
+        const updated = Array.from(map.values());
+        try { localStorage.setItem('annasetu_farmer_passes', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
 
       // Trigger Celebration Confetti
       confetti({
@@ -390,7 +395,7 @@ export default function SlotBooking() {
         origin: { y: 0.6 }
       });
 
-      // Refresh data
+      // Refresh live feeds
       fetchCentres();
       if (selectedCentre?._id) {
         fetchSlots(selectedCentre._id, selectedDate);
@@ -411,6 +416,15 @@ export default function SlotBooking() {
     : 0;
 
   const estimatedPayout = Math.round((Number(weightQuintals) || 0) * (selectedCrop?.msp || 0));
+
+  // Filter and strictly deduplicate passes for the currently selected farmer
+  const farmerPasses = Array.from(
+    new Map(
+      allPasses
+        .filter(p => p.farmer_aadhar === selectedFarmer.aadhar)
+        .map(p => [p.token_id, p])
+    ).values()
+  );
 
   return (
     <div className="py-8 px-4 sm:px-6 max-w-6xl mx-auto font-sans">
@@ -453,7 +467,7 @@ export default function SlotBooking() {
               <button
                 onClick={() => {
                   setActiveTab('passes');
-                  fetchFarmerPasses(selectedFarmer.aadhar);
+                  syncFarmerPassesFromServer(selectedFarmer.aadhar);
                 }}
                 className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   activeTab === 'passes'
@@ -461,7 +475,7 @@ export default function SlotBooking() {
                     : 'text-emerald-200 hover:text-white'
                 }`}
               >
-                📋 My Active Passes
+                📋 My Active Passes ({farmerPasses.length})
               </button>
             </div>
           </div>
@@ -487,7 +501,7 @@ export default function SlotBooking() {
           <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-gray-100">
             <div>
               <h2 className="text-xl font-bold text-gray-900">Farmer Gate Pass Directory</h2>
-              <p className="text-xs text-gray-500">Showing active and completed passes for Aadhaar: {selectedFarmer.aadhar}</p>
+              <p className="text-xs text-gray-500">Showing active passes for {selectedFarmer.name} (Aadhaar: {selectedFarmer.aadhar})</p>
             </div>
             <button
               onClick={() => setActiveTab('book')}
@@ -502,11 +516,11 @@ export default function SlotBooking() {
               <div className="inline-block w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
               <p className="text-sm font-semibold">Fetching issued gate passes...</p>
             </div>
-          ) : myPasses.length === 0 ? (
+          ) : farmerPasses.length === 0 ? (
             <div className="py-16 text-center text-gray-400">
               <div className="text-5xl mb-3">🎫</div>
-              <p className="text-base font-semibold text-gray-700">No gate passes found for this farmer</p>
-              <p className="text-xs text-gray-400 mt-1">Book your first grain procurement slot to generate a digital token.</p>
+              <p className="text-base font-semibold text-gray-700">No gate passes found for {selectedFarmer.name}</p>
+              <p className="text-xs text-gray-400 mt-1">Book a grain procurement slot in the wizard to generate your first digital token.</p>
               <button
                 onClick={() => setActiveTab('book')}
                 className="mt-4 bg-brand text-white px-5 py-2.5 rounded-lg text-xs font-bold hover:bg-brand-dark transition-colors shadow-md cursor-pointer"
@@ -516,7 +530,7 @@ export default function SlotBooking() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-              {myPasses.map((pass) => (
+              {farmerPasses.map((pass) => (
                 <div
                   key={pass.token_id}
                   className="border-2 border-emerald-100 hover:border-emerald-500 rounded-xl p-5 bg-gradient-to-br from-emerald-50/40 via-white to-white shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
@@ -674,6 +688,7 @@ export default function SlotBooking() {
                         onClick={() => {
                           setSelectedFarmer(farmer);
                           setAadharInput(farmer.aadhar);
+                          syncFarmerPassesFromServer(farmer.aadhar);
                         }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
                           selectedFarmer.aadhar === farmer.aadhar
@@ -1300,7 +1315,7 @@ export default function SlotBooking() {
                   onClick={() => {
                     setActivePassModal(null);
                     setActiveTab('passes');
-                    fetchFarmerPasses(selectedFarmer.aadhar);
+                    syncFarmerPassesFromServer(selectedFarmer.aadhar);
                   }}
                   className="bg-brand text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-brand-dark transition-colors shadow cursor-pointer"
                 >
