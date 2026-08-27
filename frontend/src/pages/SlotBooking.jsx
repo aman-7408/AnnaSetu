@@ -680,7 +680,7 @@ export default function SlotBooking() {
                 </div>
 
                 {/* Verified Farmer Banner */}
-                {selectedFarmer && (
+                {isVerified && (
                   <div className="mt-4 p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shadow-sm shrink-0">
