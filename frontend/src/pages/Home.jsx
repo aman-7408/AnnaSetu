@@ -29,7 +29,10 @@ export default function Home() {
         >
           Register as a New Farmer
         </button>
-        <button className="bg-white text-brand border-2 border-brand px-8 py-4 rounded-lg font-bold text-lg hover:bg-gray-50 transition-colors shadow-lg flex items-center justify-center gap-2">
+        <button 
+          onClick={() => navigate('/book-slot')}
+          className="bg-white text-brand border-2 border-brand px-8 py-4 rounded-lg font-bold text-lg hover:bg-gray-50 transition-colors shadow-lg flex items-center justify-center gap-2"
+        >
           Book a Slot
         </button>
       </div>

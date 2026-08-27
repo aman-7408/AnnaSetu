@@ -12,6 +12,15 @@ const mockAadharDatabase = {
   }
 };
 
+router.get('/', async (req, res) => {
+  try {
+    const farmers = await Farmer.find().sort({ registered_at: -1 });
+    res.json({ success: true, count: farmers.length, farmers });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/send-otp', (req, res) => {
   const { aadhar_number } = req.body;
   if (!aadhar_number || aadhar_number.length !== 12) {
