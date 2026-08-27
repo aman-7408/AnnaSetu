@@ -126,7 +126,6 @@ async function sendNotification({
   });
 
   await notification.save();
-  console.log(`[AnnaSetu] ✅ In-App Notification saved for ${recipient_name}: "${finalTitle}"`);
   return notification;
 }
 

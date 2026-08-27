@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const API_BASE = 'http://localhost:5000/api/notifications';
 
@@ -359,7 +359,7 @@ export default function Notifications() {
       {/* ── Notification Feed ── */}
       <div className="space-y-2.5">
         {loading ? (
-          <div className="py-16 text-center text-gray-400 text-sm">
+          <div className="py-16 text-center text-gray-400 text-sm" role="status" aria-label="Loading notifications">
             <div className="w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             Loading...
           </div>
