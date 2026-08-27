@@ -115,6 +115,22 @@ function getDefaultSlotsForCentre(centre, date) {
   ];
 }
 
+const INITIAL_DEMO_PASSES = [
+  {
+    token_id: 'AS-2026-WHT-7821',
+    farmer_aadhar: '123456789012',
+    farmer_name: 'Aman Kumar',
+    farmer_phone: '+91 98765 43210',
+    centre_name: 'Meerut Central Agro Warehouse',
+    booking_date: new Date().toISOString().split('T')[0],
+    slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)',
+    crop_type: 'Wheat (Sharbati A-Grade)',
+    estimated_weight_quintals: 45,
+    status: 'CONFIRMED',
+    created_at: new Date().toISOString()
+  }
+];
+
 export default function SlotBooking() {
   const [activeTab, setActiveTab] = useState('book'); // 'book' | 'passes'
   const [currentStep, setCurrentStep] = useState(1); // 1: Farmer & Mandi, 2: Shift, 3: Crop & Weight
@@ -139,7 +155,7 @@ export default function SlotBooking() {
   const [errorMessage, setErrorMessage] = useState('');
 
   // Farmer's Existing Passes
-  const [myPasses, setMyPasses] = useState([]);
+  const [myPasses, setMyPasses] = useState(INITIAL_DEMO_PASSES);
   const [loadingPasses, setLoadingPasses] = useState(false);
   const [activePassModal, setActivePassModal] = useState(null);
 
@@ -164,14 +180,16 @@ export default function SlotBooking() {
       } catch {
         res = await fetch('/api/capacity/centres');
       }
-      const data = await res.json();
-      if (data.success && data.centres?.length > 0) {
-        setCentres(data.centres);
-        const match = data.centres.find(c => c._id === selectedCentre?._id) || data.centres[0];
-        setSelectedCentre(match);
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.centres) && data.centres.length > 0) {
+          setCentres(data.centres);
+          const match = data.centres.find(c => c._id === selectedCentre?._id) || data.centres[0];
+          setSelectedCentre(match);
+        }
       }
     } catch {
-      // Fallback data already populated
+      // Fallback data already active
     } finally {
       setLoadingCentres(false);
     }
@@ -186,16 +204,18 @@ export default function SlotBooking() {
       } catch {
         res = await fetch(`/api/capacity/centres/${centreId}/slots?date=${date}`);
       }
-      const data = await res.json();
-      if (data.success && data.slots?.length > 0) {
-        setSlots(data.slots);
-        const available = data.slots.find(s => (s.max_capacity_quintals - s.booked_capacity_quintals) > 0);
-        setSelectedSlot(available || data.slots[0]);
-      } else {
-        const defaults = getDefaultSlotsForCentre(selectedCentre, date);
-        setSlots(defaults);
-        setSelectedSlot(defaults[0]);
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.slots) && data.slots.length > 0) {
+          setSlots(data.slots);
+          const available = data.slots.find(s => (s.max_capacity_quintals - s.booked_capacity_quintals) > 0);
+          setSelectedSlot(available || data.slots[0]);
+          return;
+        }
       }
+      const defaults = getDefaultSlotsForCentre(selectedCentre, date);
+      setSlots(defaults);
+      setSelectedSlot(defaults[0]);
     } catch {
       const defaults = getDefaultSlotsForCentre(selectedCentre, date);
       setSlots(defaults);
@@ -220,47 +240,37 @@ export default function SlotBooking() {
       } catch {
         res = await fetch('/api/farmers');
       }
-      const data = await res.json();
-      const match = data.farmers?.find(f => f.aadhar_number === aadhar);
-
-      if (match) {
-        setSelectedFarmer({
-          name: match.name,
-          aadhar: match.aadhar_number,
-          phone: match.phone,
-          land_size: match.land_size || '4.0 Acres',
-          plot_number: match.plot_number || 'N/A',
-          address: match.address
-        });
-      } else {
-        const demo = DEMO_FARMERS.find(d => d.aadhar === aadhar);
-        if (demo) {
-          setSelectedFarmer(demo);
-        } else {
+      if (res && res.ok) {
+        const data = await res.json();
+        const match = data.farmers?.find(f => f.aadhar_number === aadhar);
+        if (match) {
           setSelectedFarmer({
-            name: 'Kisan Beneficiary',
-            aadhar: aadhar,
-            phone: '+91 98000 00000',
-            land_size: '3.5 Acres',
-            plot_number: 'PL-REG-NEW',
-            address: 'District Agro Zone'
+            name: match.name,
+            aadhar: match.aadhar_number,
+            phone: match.phone,
+            land_size: match.land_size || '4.0 Acres',
+            plot_number: match.plot_number || 'N/A',
+            address: match.address
           });
+          return;
         }
       }
     } catch {
-      const demo = DEMO_FARMERS.find(d => d.aadhar === aadhar);
-      if (demo) {
-        setSelectedFarmer(demo);
-      } else {
-        setSelectedFarmer({
-          name: 'Kisan Beneficiary',
-          aadhar: aadhar,
-          phone: '+91 98000 00000',
-          land_size: '3.5 Acres',
-          plot_number: 'PL-REG-NEW',
-          address: 'District Agro Zone'
-        });
-      }
+      // Handled in demo lookup
+    }
+
+    const demo = DEMO_FARMERS.find(d => d.aadhar === aadhar);
+    if (demo) {
+      setSelectedFarmer(demo);
+    } else {
+      setSelectedFarmer({
+        name: 'Kisan Beneficiary',
+        aadhar: aadhar,
+        phone: '+91 98000 00000',
+        land_size: '3.5 Acres',
+        plot_number: 'PL-REG-NEW',
+        address: 'District Agro Zone'
+      });
     }
   };
 
@@ -274,9 +284,12 @@ export default function SlotBooking() {
       } catch {
         res = await fetch(`/api/bookings/farmer/${aadhar}`);
       }
-      const data = await res.json();
-      if (data.success) {
-        setMyPasses(data.bookings || []);
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.bookings) && data.bookings.length > 0) {
+          setMyPasses(data.bookings);
+          return;
+        }
       }
     } catch (err) {
       console.error('Failed to fetch passes:', err);
@@ -321,35 +334,39 @@ export default function SlotBooking() {
         estimated_weight_quintals: weight
       };
 
-      let res;
+      let bookingSaved = null;
+
       try {
-        res = await fetch(`${API_BASE}/api/bookings/create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        let res;
+        try {
+          res = await fetch(`${API_BASE}/api/bookings/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } catch {
+          res = await fetch('/api/bookings/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        }
+
+        if (res && res.ok) {
+          const data = await res.json();
+          if (data.success && data.booking) {
+            bookingSaved = data.booking;
+          }
+        }
       } catch {
-        res = await fetch('/api/bookings/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        // Fallback local pass
       }
 
-      let data;
-      if (res && res.ok) {
-        data = await res.json();
-      }
-
-      if (data && data.success) {
-        setActivePassModal(data.booking);
-      } else {
-        // Fallback robust local token generation
+      if (!bookingSaved) {
         const cropCode = selectedCrop.code || 'WHT';
         const randomNum = Math.floor(1000 + Math.random() * 9000);
-        const fallbackToken = `AS-2026-${cropCode}-${randomNum}`;
-        const localPass = {
-          token_id: fallbackToken,
+        bookingSaved = {
+          token_id: `AS-2026-${cropCode}-${randomNum}`,
           farmer_aadhar: selectedFarmer.aadhar,
           farmer_name: selectedFarmer.name,
           farmer_phone: selectedFarmer.phone,
@@ -358,11 +375,13 @@ export default function SlotBooking() {
           slot_name: selectedSlot.slot_name,
           crop_type: selectedCrop.name,
           estimated_weight_quintals: weight,
-          status: 'confirmed',
+          status: 'CONFIRMED',
           created_at: new Date().toISOString()
         };
-        setActivePassModal(localPass);
       }
+
+      setActivePassModal(bookingSaved);
+      setMyPasses(prev => [bookingSaved, ...prev.filter(p => p.token_id !== bookingSaved.token_id)]);
 
       // Trigger Celebration Confetti
       confetti({
@@ -456,7 +475,7 @@ export default function SlotBooking() {
             <span className="text-xl">⚠️</span>
             <p className="text-sm font-medium text-red-800">{errorMessage}</p>
           </div>
-          <button onClick={() => setErrorMessage('')} className="text-red-500 hover:text-red-700 font-bold text-sm">
+          <button onClick={() => setErrorMessage('')} className="text-red-500 hover:text-red-700 font-bold text-sm cursor-pointer">
             ✕
           </button>
         </div>
@@ -734,7 +753,7 @@ export default function SlotBooking() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {centres.map((centre) => {
-                      const isSelected = selectedCentre?._id === centre._id;
+                      const isSelected = selectedCentre?._id === centre._id || selectedCentre?.name === centre.name;
                       const max = centre.daily_capacity_quintals || 1000;
                       const booked = centre.booked_capacity_quintals || 0;
                       const available = Math.max(0, max - booked);
@@ -743,7 +762,7 @@ export default function SlotBooking() {
 
                       return (
                         <div
-                          key={centre._id}
+                          key={centre._id || centre.name}
                           onClick={() => setSelectedCentre(centre)}
                           className={`cursor-pointer rounded-xl p-5 border-2 transition-all relative ${
                             isSelected
@@ -850,7 +869,7 @@ export default function SlotBooking() {
                       value={selectedDate}
                       min={new Date().toISOString().split('T')[0]}
                       onChange={(e) => setSelectedDate(e.target.value)}
-                      className="border-2 border-emerald-300 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-800 focus:outline-none focus:border-brand"
+                      className="border-2 border-emerald-300 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-800 focus:outline-none focus:border-brand cursor-pointer"
                     />
                   </div>
                 </div>
