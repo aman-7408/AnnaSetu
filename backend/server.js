@@ -18,6 +18,7 @@ const bookingRoutes = require('./modules/booking/routes');
 app.use('/api/farmers', farmerRoutes);
 app.use('/api/capacity', capacityRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/notifications', require('./modules/notifications/routes'));
 
 // Test Base Route
 app.get('/', (req, res) => {
