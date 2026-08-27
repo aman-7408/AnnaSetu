@@ -13,33 +13,6 @@ const CROPS = [
   { name: 'Gram / Chana (Desi FAQ)', code: 'CHN', msp: 5440, unit: '₹/Quintal' }
 ];
 
-const DEMO_FARMERS = [
-  {
-    name: 'Aman Kumar',
-    aadhar: '123456789012',
-    phone: '+91 98765 43210',
-    land_size: '5.5 Acres',
-    plot_number: 'PL-784/A',
-    address: 'Ludhiana Rural, Punjab'
-  },
-  {
-    name: 'Ramesh Patel',
-    aadhar: '987654321098',
-    phone: '+91 94123 55678',
-    land_size: '3.8 Acres',
-    plot_number: 'UP-MR-209',
-    address: 'Bypass Sector 4, Meerut, UP'
-  },
-  {
-    name: 'Sunita Devi',
-    aadhar: '456789012345',
-    phone: '+91 98350 99881',
-    land_size: '4.2 Acres',
-    plot_number: 'AS-KM-112',
-    address: 'Kamrup District, Guwahati, Assam'
-  }
-];
-
 const FALLBACK_CENTRES = [
   {
     _id: '66c000000000000000000001',
@@ -137,7 +110,7 @@ export default function SlotBooking() {
   const [loadingSlots, setLoadingSlots] = useState(false);
 
   // Booking Form State
-  const [selectedFarmer, setSelectedFarmer] = useState(DEMO_FARMERS[0]);
+  const [selectedFarmer, setSelectedFarmer] = useState({ name: 'Unregistered', aadhar: '', phone: '---', land_size: '---', plot_number: '---', address: '---' });
   const [aadharInput, setAadharInput] = useState(DEMO_FARMERS[0].aadhar);
   const [selectedCentre, setSelectedCentre] = useState(FALLBACK_CENTRES[0]);
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -257,14 +230,8 @@ export default function SlotBooking() {
 
     // STRICT PRODUCTION MODE (Option B)
     // If we reach here, the Aadhaar was not found in the live database.
-    // We allow explicit hardcoded demo accounts for presentation, but block all others.
-    const demo = DEMO_FARMERS.find(d => d.aadhar === aadhar);
-    if (demo) {
-      setSelectedFarmer(demo);
-      syncFarmerPassesFromServer(aadhar);
-    } else {
-      setErrorMessage('Aadhaar not found. Please register in AnnaSetu first.');
-      // Fix: Provide a safe blank object to prevent React 'Cannot read properties' UI crashes
+    setErrorMessage('Aadhaar not found. Please register in AnnaSetu first.');
+    // Fix: Provide a safe blank object to prevent React 'Cannot read properties' UI crashes
       setSelectedFarmer({
         name: 'Unregistered',
         aadhar: aadhar,
@@ -689,31 +656,6 @@ export default function SlotBooking() {
                   <span className="text-xs font-bold px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
                     Aadhaar Verified
                   </span>
-                </div>
-
-                {/* Quick Selection Demo Chips */}
-                <div className="mb-4">
-                  <p className="text-xs text-gray-500 mb-2 font-semibold">Quick-Select Registered Profile:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {DEMO_FARMERS.map((farmer) => (
-                      <button
-                        key={farmer.aadhar}
-                        type="button"
-                        onClick={() => {
-                          setSelectedFarmer(farmer);
-                          setAadharInput(farmer.aadhar);
-                          syncFarmerPassesFromServer(farmer.aadhar);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
-                          selectedFarmer.aadhar === farmer.aadhar
-                            ? 'bg-brand text-white border-brand shadow-sm'
-                            : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border-gray-200'
-                        }`}
-                      >
-                        🌾 {farmer.name} ({farmer.address.split(',')[1]?.trim() || farmer.address})
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 {/* Aadhaar Input Search */}
