@@ -730,7 +730,7 @@ export default function SlotBooking() {
                     <p className="text-xs">Loading Mandi capacities...</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="flex flex-col gap-4">
                     {centres.map((centre) => {
                       const isSelected = selectedCentre?._id === centre._id || selectedCentre?.name === centre.name;
                       const max = centre.daily_capacity_quintals || 1000;
@@ -743,64 +743,69 @@ export default function SlotBooking() {
                         <div
                           key={centre._id || centre.name}
                           onClick={() => setSelectedCentre(centre)}
-                          className={`cursor-pointer rounded-xl p-5 border-2 transition-all relative ${
+                          className={`cursor-pointer rounded-xl p-5 border-2 transition-all relative flex flex-col md:flex-row md:items-center gap-4 ${
                             isSelected
                               ? 'border-brand bg-emerald-50/50 shadow-md ring-2 ring-emerald-300'
                               : 'border-gray-200 hover:border-gray-300 bg-white'
                           }`}
                         >
+                          {/* Selection Checkmark */}
                           {isSelected && (
-                            <div className="absolute top-3 right-3 w-5 h-5 bg-brand text-white rounded-full flex items-center justify-center text-xs font-bold shadow">
+                            <div className="absolute top-3 right-3 md:top-1/2 md:-translate-y-1/2 md:-left-3 md:right-auto w-6 h-6 bg-brand text-white rounded-full flex items-center justify-center text-sm font-bold shadow-md ring-4 ring-white z-10">
                               ✓
                             </div>
                           )}
 
-                          <div className="flex items-start justify-between mb-2">
-                            <span className="text-xs font-extrabold uppercase tracking-wide text-emerald-800">
-                              {centre.state}
-                            </span>
-                            {isDiverted ? (
-                              <span className="px-2 py-0.5 rounded text-2xs font-extrabold bg-amber-500 text-white uppercase animate-pulse">
-                                Traffic Divert
+                          {/* Left Side: Mandi Identity & Details */}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-extrabold uppercase tracking-wide text-emerald-800">
+                                {centre.state}
                               </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded text-2xs font-extrabold bg-emerald-100 text-emerald-800 uppercase">
-                                Normal Intake
-                              </span>
+                              {isDiverted ? (
+                                <span className="px-2 py-0.5 rounded text-3xs font-extrabold bg-amber-500 text-white uppercase animate-pulse">
+                                  Traffic Divert
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-3xs font-extrabold bg-emerald-100 text-emerald-800 uppercase">
+                                  Normal Intake
+                                </span>
+                              )}
+                            </div>
+
+                            <h3 className="font-bold text-gray-900 text-base">{centre.name}</h3>
+                            <p className="text-xs text-gray-500 mt-1">📍 {centre.location}</p>
+
+                            <div className="mt-3 flex items-center gap-4 text-xs text-gray-500 font-medium">
+                              <span className="flex items-center gap-1">👤 {centre.manager_name}</span>
+                              <span className="flex items-center gap-1 font-mono">📞 {centre.manager_phone}</span>
+                            </div>
+                          </div>
+
+                          {/* Right Side: Capacity Progress */}
+                          <div className="w-full md:w-1/3 min-w-[250px] shrink-0 mt-4 md:mt-0">
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between text-xs font-bold text-gray-600">
+                                <span>Intake Utilization:</span>
+                                <span className={util >= 85 ? 'text-red-600' : util >= 60 ? 'text-amber-600' : 'text-emerald-700'}>
+                                  {util}% ({available} Q Left)
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 h-2.5 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${
+                                    util >= 85 ? 'bg-red-500' : util >= 60 ? 'bg-amber-500' : 'bg-brand'
+                                  }`}
+                                  style={{ width: `${util}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {isDiverted && (
+                              <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 font-medium">
+                                ⚠️ {centre.alert_message || 'Heavy intake. Recommended to reroute to alternate Mandis.'}
+                              </div>
                             )}
-                          </div>
-
-                          <h3 className="font-bold text-gray-900 text-sm line-clamp-2 h-10">{centre.name}</h3>
-                          <p className="text-2xs text-gray-500 mt-1 mb-3">📍 {centre.location}</p>
-
-                          {/* Capacity Progress Bar */}
-                          <div className="space-y-1 mt-2">
-                            <div className="flex justify-between text-2xs font-bold text-gray-600">
-                              <span>Intake Utilization:</span>
-                              <span className={util >= 85 ? 'text-red-600' : util >= 60 ? 'text-amber-600' : 'text-emerald-700'}>
-                                {util}% ({available} Q Left)
-                              </span>
-                            </div>
-                            <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  util >= 85 ? 'bg-red-500' : util >= 60 ? 'bg-amber-500' : 'bg-brand'
-                                }`}
-                                style={{ width: `${util}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Advisory if Diverted */}
-                          {isDiverted && (
-                            <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-2xs text-amber-800 font-medium">
-                              ⚠️ {centre.alert_message || 'Heavy intake. Recommended to reroute to alternate Mandis.'}
-                            </div>
-                          )}
-
-                          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-2xs text-gray-500">
-                            <span>Manager: {centre.manager_name}</span>
-                            <span className="font-mono">{centre.manager_phone}</span>
                           </div>
                         </div>
                       );
