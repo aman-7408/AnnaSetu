@@ -16,6 +16,7 @@ const capacityRoutes = require('./modules/capacity/routes');
 
 app.use('/api/farmers', farmerRoutes);
 app.use('/api/capacity', capacityRoutes);
+app.use('/api/notifications', require('./modules/notifications/routes'));
 
 // Test Base Route
 app.get('/', (req, res) => {
