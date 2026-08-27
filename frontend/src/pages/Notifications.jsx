@@ -45,8 +45,16 @@ function HighlightedText({ text }) {
 }
 
 export default function Notifications() {
-  const [farmerId]    = useState('111122223333');
-  const [farmerName]  = useState('Aman Kumar');
+  const savedFarmer = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('farmer_user')) || {};
+    } catch {
+      return {};
+    }
+  })();
+
+  const [farmerId]    = useState(savedFarmer.aadhar_number || localStorage.getItem('farmer_aadhar') || '111122223333');
+  const [farmerName]  = useState(savedFarmer.name || 'Aman Kumar');
   const [notifications, setNotifications]     = useState([]);
   const [unreadCount, setUnreadCount]         = useState(0);
   const [loading, setLoading]                 = useState(false);
@@ -90,7 +98,7 @@ export default function Notifications() {
       try {
         const notif = new window.Notification(title, {
           body: message,
-          icon: '/favicon.ico',
+          icon: '/logo.png',
           tag: Date.now().toString(),
           vibrate: [200, 100, 200]
         });
@@ -273,7 +281,7 @@ export default function Notifications() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{farmerName} · AS-2026-4821</p>
+          <p className="text-sm text-gray-500 mt-0.5">{farmerName} · {farmerId}</p>
         </div>
         <div className="flex items-center gap-3 mt-1">
           {unreadCount > 0 && (

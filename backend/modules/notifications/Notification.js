@@ -68,5 +68,9 @@ const notificationSchema = new mongoose.Schema({
 
   sent_at: { type: Date, default: Date.now }
 });
+// Critical indexes for high-performance querying
+notificationSchema.index({ farmer_id: 1, sent_at: -1 });
+notificationSchema.index({ farmer_id: 1, category: 1, sent_at: -1 });
+notificationSchema.index({ farmer_id: 1, is_read: 1 });
 
 module.exports = mongoose.model('Notification', notificationSchema);

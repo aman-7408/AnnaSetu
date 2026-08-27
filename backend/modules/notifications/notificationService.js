@@ -20,44 +20,44 @@ const TEMPLATES = {
   }),
 
   booking_confirmed: (data) => ({
-    title: 'Mandi Date Confirmed!',
-    message: `Your time to bring grain is booked for ${data.date || 'Tuesday, 28 Aug'} at ${data.time || '10:00 AM'} at ${data.centre_name || 'Kharar Mandi'}.`,
-    action_hint: `Token #${data.token_no || 'TK-108'}. Please carry your Aadhaar card and grain bags.`,
+    title: 'Mandi Slot Confirmed!',
+    message: `Your slot to sell grain is booked for ${data.date || 'Wednesday, 27 Aug 2026'} (09:00 AM – 12:00 PM) at ${data.centre_name || 'Meerut Central Agro Warehouse'}.`,
+    action_hint: `Token #${data.token_no || 'AS-2026-WHT-7821'}. Please carry your Aadhaar card and tractor pass.`,
     category: 'booking'
   }),
 
   slot_reminder: (data) => ({
-    title: 'Reminder: Mandi Tomorrow',
-    message: `Your grain selling slot is tomorrow at ${data.time || '10:00 AM'} at ${data.centre_name || 'Kharar Mandi'}.`,
-    action_hint: 'Please pack your bags and check your tractor.',
+    title: 'Reminder: Mandi Shift Tomorrow',
+    message: `Your grain selling shift (09:00 AM – 12:00 PM) is scheduled at ${data.centre_name || 'Meerut Central Agro Warehouse'}.`,
+    action_hint: 'Please arrive at Gate #1 with your Token AS-2026-WHT-7821.',
     category: 'booking'
   }),
 
   slot_missed: (data) => ({
     title: 'Missed Your Slot',
-    message: 'You missed your slot today.',
-    action_hint: 'Tap "Book Slot" to choose your new time.',
+    message: 'You missed your scheduled shift today.',
+    action_hint: 'Tap "Book Slot" to choose a new 3-hour shift.',
     category: 'booking'
   }),
 
   queue_update: (data) => ({
-    title: 'Tractor Line Update',
-    message: `Only ${data.tractors_ahead || '2'} tractors ahead of you at Weighbridge #${data.gate_no || '1'}.`,
-    action_hint: 'Get ready to move towards the gate.',
+    title: 'Tractor Line & Gate Check-in',
+    message: `Vehicle #${data.vehicle_no || 'HR-05-AB-4412'} is cleared at Gate Pass #${data.gate_pass || 'GP-2026-8831'}.`,
+    action_hint: 'Proceed to Quality Assaying station for moisture check.',
     category: 'queue'
   }),
 
   payment_initiated: (data) => ({
-    title: 'Bill Prepared — Money Processing',
-    message: `Bill of Rs. ${data.amount || '1,09,500'} prepared for ${data.quantity || '50 Quintals'} Wheat at Govt MSP price.`,
-    action_hint: 'Govt bank transfer is in progress. No action needed.',
+    title: 'J-Form Approved — DBT Processing',
+    message: `J-Form #${data.j_form_no || 'JF-2026-98124'} generated for Rs. ${data.amount || '1,02,830'} (${data.quantity || '45.20 Quintals'} Grade A Wheat @ Rs. 2,275 MSP).`,
+    action_hint: 'Govt PFMS Direct Benefit Transfer is in progress.',
     category: 'payment'
   }),
 
   payment_credited: (data) => ({
-    title: 'Money Sent to Your Bank!',
-    message: `Rs. ${data.amount || '1,09,500'} has arrived in your ${data.bank_name || 'SBI'} Bank Account (ending in ${data.account_last4 || '5678'}).`,
-    action_hint: 'You can check your bank account.',
+    title: 'Money Sent to Your Bank via DBT!',
+    message: `Rs. ${data.amount || '1,02,830'} has arrived in your ${data.bank_name || 'State Bank of India'} Account (ending in ${data.account_last4 || '4412'}).`,
+    action_hint: 'Official J-Form receipt available for download.',
     category: 'payment'
   }),
 
@@ -69,9 +69,9 @@ const TEMPLATES = {
   }),
 
   weather_alert: (data) => ({
-    title: 'Rain Alert at Mandi',
-    message: `Rain is expected near ${data.centre_name || 'Kharar Mandi'} tomorrow. We have kept your grain in a covered shed.`,
-    action_hint: 'Cover your tractor with plastic sheet before leaving.',
+    title: 'Rain Advisory at Mandi',
+    message: `Heavy moisture expected near ${data.centre_name || 'Meerut Central Agro Warehouse'}. Covered grain silo sheds are fully active.`,
+    action_hint: 'Cover tractor-trolley with waterproof tarpaulin before departure.',
     category: 'advisory'
   }),
 
@@ -139,27 +139,27 @@ async function seedDemoNotifications(farmer_id = '111122223333', name = 'Aman Ku
   const seedEvents = [
     {
       trigger_event: 'registration_welcome',
-      metadata: { farmer_id: 'AS-2026-4821', name }
+      metadata: { farmer_id: 'AS-2026-WHT-7821', name }
     },
     {
       trigger_event: 'booking_confirmed',
-      metadata: { date: 'Tuesday, 28 Aug', time: '10:00 AM', centre_name: 'Kharar Mandi (Gate #2)', token_no: 'TK-108' }
+      metadata: { date: 'Wednesday, 27 Aug 2026', time: '09:00 AM – 12:00 PM', centre_name: 'Meerut Central Agro Warehouse (Gate #1)', token_no: 'AS-2026-WHT-7821' }
     },
     {
       trigger_event: 'queue_update',
-      metadata: { tractors_ahead: '2', gate_no: '1' }
+      metadata: { vehicle_no: 'HR-05-AB-4412', gate_pass: 'GP-2026-8831' }
     },
     {
       trigger_event: 'payment_initiated',
-      metadata: { amount: '1,09,500', quantity: '50 Quintals' }
+      metadata: { amount: '1,02,830', quantity: '45.20 Quintals', j_form_no: 'JF-2026-98124' }
     },
     {
       trigger_event: 'payment_credited',
-      metadata: { amount: '1,09,500', bank_name: 'SBI', account_last4: '5678', utr: 'DBT2026-98124' }
+      metadata: { amount: '1,02,830', bank_name: 'State Bank of India', account_last4: '4412', utr: 'JF-2026-98124' }
     },
     {
       trigger_event: 'weather_alert',
-      metadata: { centre_name: 'Kharar Mandi' }
+      metadata: { centre_name: 'Meerut Central Agro Warehouse' }
     }
   ];
 
