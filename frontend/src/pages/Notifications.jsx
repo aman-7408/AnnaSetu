@@ -142,17 +142,20 @@ export default function Notifications() {
     }
   };
 
-  // 🔄 3-Second Auto-Polling + Initial Fetch
+  // 🔄 Smart 15-Second Auto-Polling + Visibility Check
   useEffect(() => {
     fetchNotifications(true);
     setExpandedId(null);
 
     const interval = setInterval(() => {
-      fetchNotifications(false);
-    }, 3000);
+      // Prevent aggressive DDOS: Only poll if the user is actually looking at the tab
+      if (document.visibilityState === 'visible') {
+        fetchNotifications(false);
+      }
+    }, 15000);
 
     return () => clearInterval(interval);
-  }, [activeCategory, unreadOnly]);
+  }, [activeCategory, unreadOnly, farmerId]);
 
   const toggleExpand = (id) => {
     setExpandedId(prev => (prev === id ? null : id));

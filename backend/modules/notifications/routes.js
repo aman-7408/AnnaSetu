@@ -77,12 +77,18 @@ router.get('/farmer/:farmer_id', async (req, res) => {
   }
 });
 
+const mongoose = require('mongoose');
+
 /**
  * PUT /api/notifications/:id/read
  * Mark a single notification as read
  */
 router.put('/:id/read', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid Notification ID format.' });
+    }
+
     const notification = await Notification.findByIdAndUpdate(
       req.params.id,
       { is_read: true },
