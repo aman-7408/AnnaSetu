@@ -264,7 +264,15 @@ export default function SlotBooking() {
       syncFarmerPassesFromServer(aadhar);
     } else {
       setErrorMessage('Aadhaar not found. Please register in AnnaSetu first.');
-      setSelectedFarmer(null);
+      // Fix: Provide a safe blank object to prevent React 'Cannot read properties' UI crashes
+      setSelectedFarmer({
+        name: 'Unregistered',
+        aadhar: aadhar,
+        phone: '---',
+        land_size: '---',
+        plot_number: '---',
+        address: '---'
+      });
     }
   };
 
@@ -301,6 +309,11 @@ export default function SlotBooking() {
     setErrorMessage('');
     const weight = Number(weightQuintals);
 
+    if (selectedFarmer.name === 'Unregistered') {
+      setErrorMessage('Cannot secure slot. You must verify a registered Aadhaar first.');
+      return;
+    }
+    
     if (!selectedCentre) {
       setErrorMessage('Please select a Procurement Mandi Centre.');
       return;
