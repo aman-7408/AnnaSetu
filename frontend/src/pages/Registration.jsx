@@ -222,7 +222,7 @@ export default function Registration() {
             </h3>
             
             <p className={`text-gray-500 mb-8 font-medium transition-opacity duration-500 delay-[800ms] ${isDrawn ? 'opacity-100' : 'opacity-0'}`}>
-              Your details have been successfully verified and securely saved to the database.
+              Your details have been successfully verified.
             </p>
             
             {/* OK Button - Drops in fully animated at the very end */}

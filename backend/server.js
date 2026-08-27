@@ -1,29 +1,40 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 
-dotenv.config();
 const app = express();
+const PORT = process.env.PORT || 5000;
 
+// Middlewares
 app.use(cors());
 app.use(express.json());
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/farmer_procurement')
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log('MongoDB Connection Error: ', err));
+// Routes
+const farmerRoutes = require('./modules/registration/routes');
+const capacityRoutes = require('./modules/capacity/routes');
 
-// Module Route Placeholders
-app.use('/api/farmers', require('./modules/registration/routes'));
-// app.use('/api/bookings', require('./modules/booking/routes'));
-// app.use('/api/notifications', require('./modules/notifications/routes'));
-// app.use('/api/centres', require('./modules/capacity/centreRoutes'));
-// app.use('/api/slots', require('./modules/capacity/slotRoutes'));
-// app.use('/api/assay', require('./modules/assaying/routes'));
-// app.use('/api/payments', require('./modules/payment/routes'));
+app.use('/api/farmers', farmerRoutes);
+app.use('/api/capacity', capacityRoutes);
 
-app.get('/', (req, res) => res.send('Farmer Procurement API is Running'));
+// Test Base Route
+app.get('/', (req, res) => {
+  res.json({ message: 'AnnaSetu API Engine is running smoothly.' });
+});
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Connect to MongoDB Atlas
+if (process.env.MONGODB_URI) {
+  mongoose.connect(process.env.MONGODB_URI)
+    .then(() => {
+      console.log('MongoDB Connected to Atlas Successfully!');
+    })
+    .catch((err) => {
+      console.error('MongoDB Atlas Connection Error:', err.message);
+    });
+} else {
+  console.warn('WARNING: No MONGODB_URI found in .env file!');
+}
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
