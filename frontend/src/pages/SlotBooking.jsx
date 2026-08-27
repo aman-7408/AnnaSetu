@@ -113,8 +113,8 @@ export default function SlotBooking() {
   const [selectedFarmer, setSelectedFarmer] = useState({ name: 'Unregistered', aadhar: '', phone: '---', land_size: '---', plot_number: '---', address: '---' });
   const [aadharInput, setAadharInput] = useState('');
   const [selectedCentre, setSelectedCentre] = useState(FALLBACK_CENTRES[0]);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [selectedSlot, setSelectedSlot] = useState(() => getDefaultSlotsForCentre(FALLBACK_CENTRES[0])[0]);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedSlot, setSelectedSlot] = useState(null);
   const [selectedCrop, setSelectedCrop] = useState(CROPS[0]);
   const [weightQuintals, setWeightQuintals] = useState('45');
 
@@ -134,7 +134,7 @@ export default function SlotBooking() {
 
   // Fetch Slots when Centre or Date changes
   useEffect(() => {
-    if (selectedCentre) {
+    if (selectedCentre && selectedDate) {
       fetchSlots(selectedCentre._id, selectedDate);
     }
   }, [selectedCentre, selectedDate]);
@@ -836,31 +836,41 @@ export default function SlotBooking() {
             <div className="space-y-6">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 
-                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 mb-4 border-b border-gray-100">
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                      <span className="p-1.5 bg-blue-100 text-blue-800 rounded-lg text-sm">⏰</span>
-                      Select Booking Date & 3-Hour Intake Shift
-                    </h2>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Procurement Terminal: <span className="font-bold text-emerald-800">{selectedCentre?.name}</span>
-                    </p>
-                  </div>
-
-                  {/* Date Picker Input */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-bold text-gray-700">Intake Date:</label>
+                {/* Date Picker Header */}
+                <div className="pb-6 mb-6 border-b border-gray-100">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                    <span className="p-1.5 bg-blue-100 text-blue-800 rounded-lg text-sm">📅</span>
+                    Select Booking Date
+                  </h2>
+                  <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                    <label className="block text-xs font-bold text-gray-700 mb-2">Desired Intake Date:</label>
                     <input
                       type="date"
                       value={selectedDate}
                       min={new Date().toISOString().split('T')[0]}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="border-2 border-emerald-300 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-800 focus:outline-none focus:border-brand cursor-pointer"
+                      onChange={(e) => {
+                        setSelectedDate(e.target.value);
+                        setSelectedSlot(null);
+                      }}
+                      className="w-full sm:w-64 border-2 border-emerald-300 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-brand cursor-pointer shadow-sm"
                     />
                   </div>
                 </div>
 
-                {/* Shift Selection Cards */}
+                {/* === HIDDEN SHIFT VAULT === */}
+                <div 
+                  className={`transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] transform origin-top ${
+                    selectedDate 
+                      ? 'opacity-100 translate-y-0 scale-y-100 max-h-[2000px] pointer-events-auto' 
+                      : 'opacity-0 translate-y-8 scale-y-95 max-h-0 overflow-hidden pointer-events-none'
+                  }`}
+                >
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                    <span className="p-1.5 bg-amber-100 text-amber-800 rounded-lg text-sm">⏰</span>
+                    Select 3-Hour Intake Shift
+                  </h2>
+
+                  {/* Shift Selection Cards */}
                 {loadingSlots ? (
                   <div className="py-16 text-center text-gray-500">
                     <div className="inline-block w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin mb-3"></div>
@@ -935,23 +945,13 @@ export default function SlotBooking() {
                             </div>
                           </div>
 
-                          <div className="mt-4 text-center">
-                            {isFull ? (
+                          {isFull && (
+                            <div className="mt-4 text-center">
                               <span className="text-2xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 block">
                                 ⛔ Shift Full (0 Q Left)
                               </span>
-                            ) : (
-                              <span
-                                className={`text-2xs font-bold px-2 py-1 rounded block ${
-                                  isSelected
-                                    ? 'bg-brand text-white'
-                                    : 'bg-emerald-100 text-emerald-800'
-                                }`}
-                              >
-                                {isSelected ? 'Selected Shift' : 'Select This Shift'}
-                              </span>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -977,6 +977,8 @@ export default function SlotBooking() {
                     <span>Proceed to Crop & Weight</span>
                     <span>➔</span>
                   </button>
+                </div>
+                {/* === END SHIFT VAULT === */}
                 </div>
               </div>
             </div>
