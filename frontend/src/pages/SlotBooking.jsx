@@ -373,7 +373,7 @@ export default function SlotBooking() {
           slot_name: selectedSlot.slot_name,
           crop_type: selectedCrop.name,
           estimated_weight_quintals: weight,
-          status: 'CONFIRMED',
+          status: 'confirmed',
           created_at: new Date().toISOString()
         };
       }

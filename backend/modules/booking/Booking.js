@@ -65,5 +65,8 @@ const bookingSchema = new mongoose.Schema({
     default: Date.now 
   }
 });
+// High-performance composite indexes for Mandi Manager Dashboards
+bookingSchema.index({ centre_id: 1, booking_date: 1, slot_code: 1 });
+bookingSchema.index({ farmer_aadhar: 1, booking_date: -1 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

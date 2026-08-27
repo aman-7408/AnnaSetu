@@ -133,7 +133,7 @@ router.post('/create', async (req, res) => {
       {
         $inc: { booked_capacity_quintals: weight }
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updatedSlot) {
