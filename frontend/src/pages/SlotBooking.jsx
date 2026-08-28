@@ -866,6 +866,9 @@ export default function SlotBooking() {
                         setSelectedDate(e.target.value);
                         setSelectedSlot(null);
                       }}
+                      onClick={(e) => {
+                        try { e.target.showPicker(); } catch (err) {}
+                      }}
                       className="w-full sm:w-64 border-2 border-emerald-300 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-brand cursor-pointer shadow-sm"
                     />
                   </div>
