@@ -100,9 +100,11 @@ const getStoredPasses = () => {
 };
 
 export default function SlotBooking() {
-  // Timezone-safe local date to prevent booking in the past
+  // Timezone-safe local dates to enforce a rolling 7-day booking window
   const tzOffset = new Date().getTimezoneOffset() * 60000;
-  const todayLocal = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
+  const nowMs = Date.now() - tzOffset;
+  const todayLocal = new Date(nowMs).toISOString().split('T')[0];
+  const maxDateLocal = new Date(nowMs + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   const [activeTab, setActiveTab] = useState('book'); // 'book' | 'passes'
   const [currentStep, setCurrentStep] = useState(1); // 1: Farmer & Mandi, 2: Shift, 3: Crop & Weight
@@ -341,46 +343,31 @@ export default function SlotBooking() {
 
       let bookingSaved = null;
 
+      let res;
       try {
-        let res;
-        try {
-          res = await fetch(`${API_BASE}/api/bookings/create`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-        } catch {
-          res = await fetch('/api/bookings/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-        }
+        res = await fetch(`${API_BASE}/api/bookings/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        res = await fetch('/api/bookings/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
 
-        if (res && res.ok) {
-          const data = await res.json();
-          if (data.success && data.booking) {
-            bookingSaved = data.booking;
-          }
-        }
-      } catch {}
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to secure slot. Please try again.');
+      }
 
-      if (!bookingSaved) {
-        const cropCode = selectedCrop.code || 'WHT';
-        const randomNum = Math.floor(1000 + Math.random() * 9000);
-        bookingSaved = {
-          token_id: `AS-2026-${cropCode}-${randomNum}`,
-          farmer_aadhar: selectedFarmer.aadhar,
-          farmer_name: selectedFarmer.name,
-          farmer_phone: selectedFarmer.phone,
-          centre_name: selectedCentre.name,
-          booking_date: selectedDate,
-          slot_name: selectedSlot.slot_name,
-          crop_type: selectedCrop.name,
-          estimated_weight_quintals: weight,
-          status: 'confirmed',
-          created_at: new Date().toISOString()
-        };
+      if (data.success && data.booking) {
+        bookingSaved = data.booking;
+      } else {
+        throw new Error('Server returned an invalid response.');
       }
 
       setActivePassModal(bookingSaved);
@@ -836,7 +823,7 @@ export default function SlotBooking() {
                           <div className="w-full md:w-1/3 min-w-[250px] shrink-0 mt-4 md:mt-0">
                             <div className="space-y-1.5">
                               <div className="flex justify-between text-xs font-bold text-gray-600">
-                                <span>Intake Utilization:</span>
+                                <span>Current Live Load (Today):</span>
                                 <span className={util >= 85 ? 'text-red-600' : util >= 60 ? 'text-amber-600' : 'text-emerald-700'}>
                                   {util}% ({available} Q Left)
                                 </span>
@@ -886,6 +873,22 @@ export default function SlotBooking() {
             <div className="space-y-6">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 
+                {/* Selected Centre Summary Ribbon */}
+                <div className="mb-6 p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center justify-between shadow-sm">
+                  <div>
+                    <span className="text-2xs font-extrabold text-gray-500 uppercase tracking-wider block mb-0.5">Selected Centre</span>
+                    <span className="font-bold text-emerald-900 text-sm flex items-center gap-2">
+                      <span>🏢</span> {selectedCentre?.name}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => setCurrentStep(1)}
+                    className="text-xs font-bold text-brand hover:text-brand-dark underline cursor-pointer"
+                  >
+                    Change Mandi
+                  </button>
+                </div>
+
                 {/* Date Picker Header */}
                 <div className="pb-6 mb-6 border-b border-gray-100">
                   <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
@@ -898,6 +901,7 @@ export default function SlotBooking() {
                       type="date"
                       value={selectedDate}
                       min={todayLocal}
+                      max={maxDateLocal}
                       onChange={(e) => {
                         setSelectedDate(e.target.value);
                         setSelectedSlot(null);
@@ -1105,7 +1109,7 @@ export default function SlotBooking() {
                           value={weightQuintals}
                           onChange={(e) => setWeightQuintals(e.target.value)}
                           className="w-full pl-4 pr-16 py-3 border-2 border-emerald-300 rounded-xl focus:border-brand focus:outline-none font-bold text-lg text-emerald-950"
-                          placeholder="enter quantity"
+                          placeholder="Enter Quantity"
                         />
                         <span className="absolute right-4 top-3.5 text-xs font-bold text-gray-400">Quintals</span>
                       </div>

@@ -219,6 +219,8 @@ router.post('/create', async (req, res) => {
         current_stage: 1,
         slot_name: slot.slot_name,
         slot_date: bookingDate,
+        estimated_weight_quintals: weight,
+
         updated_at: new Date()
       },
       { upsert: true, new: true }

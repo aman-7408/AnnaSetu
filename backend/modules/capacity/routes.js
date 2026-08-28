@@ -57,7 +57,7 @@ router.get('/centres/:id/slots', async (req, res) => {
           slot_code: 'SLOT_1_MORNING',
           slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)',
           max_capacity_quintals: slotCap,
-          booked_capacity_quintals: Math.round(slotCap * 0.4),
+          booked_capacity_quintals: 0,
           status: 'available'
         },
         {
@@ -67,7 +67,7 @@ router.get('/centres/:id/slots', async (req, res) => {
           slot_code: 'SLOT_2_AFTERNOON',
           slot_name: 'Slot 2: Afternoon (12:00 PM - 03:00 PM)',
           max_capacity_quintals: slotCap,
-          booked_capacity_quintals: Math.round(slotCap * 0.6),
+          booked_capacity_quintals: 0,
           status: 'available'
         },
         {
@@ -77,7 +77,7 @@ router.get('/centres/:id/slots', async (req, res) => {
           slot_code: 'SLOT_3_EVENING',
           slot_name: 'Slot 3: Evening (03:00 PM - 06:00 PM)',
           max_capacity_quintals: slotCap,
-          booked_capacity_quintals: Math.round(slotCap * 0.2),
+          booked_capacity_quintals: 0,
           status: 'available'
         }
       ];
@@ -359,7 +359,7 @@ router.post('/seed', async (req, res) => {
           slot_code: 'SLOT_1_MORNING',
           slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)',
           max_capacity_quintals: slotCap,
-          booked_capacity_quintals: Math.round(slotCap * 0.4),
+          booked_capacity_quintals: 0,
           status: 'available'
         },
         {
@@ -369,7 +369,7 @@ router.post('/seed', async (req, res) => {
           slot_code: 'SLOT_2_AFTERNOON',
           slot_name: 'Slot 2: Afternoon (12:00 PM - 03:00 PM)',
           max_capacity_quintals: slotCap,
-          booked_capacity_quintals: Math.round(slotCap * 0.6),
+          booked_capacity_quintals: 0,
           status: 'available'
         },
         {
@@ -379,7 +379,7 @@ router.post('/seed', async (req, res) => {
           slot_code: 'SLOT_3_EVENING',
           slot_name: 'Slot 3: Evening (03:00 PM - 06:00 PM)',
           max_capacity_quintals: slotCap,
-          booked_capacity_quintals: Math.round(slotCap * 0.2),
+          booked_capacity_quintals: 0,
           status: 'available'
         }
       );
