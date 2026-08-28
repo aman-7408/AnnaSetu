@@ -241,6 +241,17 @@ router.get('/procurements', async (req, res) => {
   }
 });
 
+// Fetch single procurement by token
+router.get('/procurements/:tokenId', async (req, res) => {
+  try {
+    const proc = await Procurement.findOne({ token_id: req.params.tokenId });
+    if (!proc) return res.status(404).json({ error: 'Token not found' });
+    res.json({ success: true, procurement: proc });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.post('/procurements/advance-stage', async (req, res) => {
   try {
     const { token_id, target_stage, details } = req.body;

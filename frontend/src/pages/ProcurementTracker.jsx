@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = 'http://localhost:5000/api/capacity';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/capacity';
 
 export default function ProcurementTracker() {
   const [procurement, setProcurement] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showTractorIcon, setShowTractorIcon] = useState(true);
-  const [simulatorLoading, setSimulatorLoading] = useState(false);
-  const [showSimulator, setShowSimulator] = useState(true);
+  const [searchToken, setSearchToken] = useState('');
 
   // Alternates between Tractor icon and Step Number for the active milestone node
   useEffect(() => {
@@ -19,327 +18,255 @@ export default function ProcurementTracker() {
     return () => clearInterval(timer);
   }, []);
 
-  // 1. Fetch procurement consignment from MongoDB Atlas
-  const fetchProcurement = async (isManual = false) => {
+  const fetchProcurement = async (tokenId, isManual = false) => {
+    if (!tokenId) return;
     if (isManual) setIsRefreshing(true);
+    else setLoading(true);
+    setErrorMessage(null);
+
     try {
-      const res = await fetch(`${API_BASE}/procurements`);
-      if (!res.ok) throw new Error('Could not fetch procurement record from database.');
+      // Switch from the generic bulk fetch to the secure token-specific fetch
+      const res = await fetch(`${API_BASE}/procurements/${tokenId}`);
       const data = await res.json();
-      if (data.success && data.procurements && data.procurements.length > 0) {
-        const active = data.procurements.find(p => p.token_id === 'AS-2026-WHT-7821') || data.procurements[0];
-        setProcurement(active);
-        setErrorMessage(null);
+      if (res.ok && data.success) {
+        setProcurement(data.procurement);
+      } else {
+        throw new Error(data.error || 'Could not find Gate Pass Token.');
       }
     } catch (err) {
       console.error('Fetch error:', err);
       setErrorMessage(err.message);
+      setProcurement(null);
     } finally {
       setLoading(false);
-      if (isManual) setIsRefreshing(false);
+      setIsRefreshing(false);
     }
   };
 
-  // 2. Initial fetch & 3-second auto-sync interval
-  useEffect(() => {
-    fetchProcurement();
-    const interval = setInterval(() => {
-      fetchProcurement();
-    }, 3000); // Auto-sync every 3 seconds
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // 3. Mandi Station Stage Advancement Simulator
-  const handleAdvanceStage = async (targetStage, details = {}) => {
-    if (!procurement) return;
-    setSimulatorLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/procurements/advance-stage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token_id: procurement.token_id,
-          target_stage: targetStage,
-          details
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setProcurement(data.procurement);
-        }
-      }
-    } catch (err) {
-      console.error('Advance error:', err);
-    } finally {
-      setSimulatorLoading(false);
-    }
-  };
-
-  // 4. Reset Demo Token handler
-  const handleResetToken = async () => {
-    setSimulatorLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/procurements/reset-demo-token`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setProcurement(data.procurement);
-        }
-      }
-    } catch (err) {
-      console.error('Reset error:', err);
-    } finally {
-      setSimulatorLoading(false);
-    }
+  const handleSearch = (e) => {
+    e.preventDefault();
+    fetchProcurement(searchToken.trim());
   };
 
   // 5 Stages Definition
   const STAGES = [
-    { key: 1, label: '1. Slot Booked', desc: 'Token active & mandi slot confirmed' },
-    { key: 2, label: '2. Gate Check-in', desc: 'Arrival verified & vehicle admitted' },
-    { key: 3, label: '3. Quality Assayed', desc: 'Moisture tested & grain graded' },
-    { key: 4, label: '4. Weighbridge', desc: 'Gross/Tare weight & bags counted' },
-    { key: 5, label: '5. Ready for Payment', desc: 'J-Form approved for payment handoff' }
+    { id: 1, title: 'Slot Booked', subtitle: 'Gate Pass Active' },
+    { id: 2, title: 'Gate In', subtitle: 'Vehicle Arrived' },
+    { id: 3, title: 'Assaying', subtitle: 'Quality Lab Check' },
+    { id: 4, title: 'Weighbridge', subtitle: 'Net Weight Finalized' },
+    { id: 5, title: 'J-Form Payout', subtitle: 'MSP Disbursed' }
   ];
 
-  const currentStage = procurement?.current_stage || 1;
-  const progressPercent = Math.min(100, Math.max(0, Math.round(((currentStage - 1) / (STAGES.length - 1)) * 100)));
-  const netQuintals = procurement?.net_weight_quintals || 45.20;
-  const mspRate = procurement?.msp_rate || 2275;
-  const grossPayout = procurement?.gross_payout || Math.round(netQuintals * mspRate);
-
-  // Dynamic Audit Logs based on reached stages
-  const auditLogs = [
-    {
-      stage: 1,
-      title: 'Slot Booked & Token Active',
-      timestamp: procurement?.slot_date ? `${procurement.slot_date} 09:00 AM` : '2026-08-27 09:00 AM',
-      officer: 'AnnaSetu Booking Engine',
-      notes: `Token ${procurement?.token_id || 'AS-2026-WHT-7821'} confirmed for 09:00 AM - 12:00 PM slot.`
-    },
-    currentStage >= 2 && {
-      stage: 2,
-      title: 'Mandi Gate Entry Verified',
-      timestamp: procurement?.gate_in_at ? new Date(procurement.gate_in_at).toLocaleTimeString() : '10:15 AM',
-      officer: 'Security Officer R. Sharma',
-      notes: `Vehicle ${procurement?.vehicle_number || 'HR-05-AB-4412'} verified. Gate Pass ${procurement?.gate_pass || 'GP-2026-8831'} issued.`
-    },
-    currentStage >= 3 && {
-      stage: 3,
-      title: 'Grain Quality Assayed & Graded',
-      timestamp: procurement?.assayed_at ? new Date(procurement.assayed_at).toLocaleTimeString() : '10:45 AM',
-      officer: 'Dr. V. Patel (Quality Assayer)',
-      notes: `Moisture ${procurement?.moisture_percent || 11.6}%, Grade: ${procurement?.grade || 'Grade A FAQ'}. Approved for procurement.`
-    },
-    currentStage >= 4 && {
-      stage: 4,
-      title: 'Weighbridge & Unloading Completed',
-      timestamp: procurement?.weighed_at ? new Date(procurement.weighed_at).toLocaleTimeString() : '11:15 AM',
-      officer: 'Weighbridge Incharge K. Singh',
-      notes: `Net weight ${netQuintals} Quintals (${procurement?.gunny_bags || 90} standard bags) unloaded at Godown #2.`
-    },
-    currentStage >= 5 && {
-      stage: 5,
-      title: 'Procurement Approved (Ready for Payment)',
-      timestamp: procurement?.approved_at ? new Date(procurement.approved_at).toLocaleTimeString() : '11:30 AM',
-      officer: 'Mandi Manager Vishesh Tiwari',
-      notes: `J-Form ${procurement?.j_form_number || 'JF-2026-98124'} approved. Gross payable ₹${grossPayout.toLocaleString()} forwarded for DBT payment.`
-    }
-  ].filter(Boolean);
-
-  if (loading) {
+  if (!procurement && !loading && !isRefreshing) {
     return (
-      <div className="py-24 px-4 max-w-4xl mx-auto text-center">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-brand border-t-transparent mb-4"></div>
-        <p className="text-gray-600 font-semibold">Connecting to live procurement database...</p>
+      <div className="py-8 px-4 sm:px-6 max-w-4xl mx-auto font-sans min-h-[60vh] flex flex-col items-center justify-center">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 w-full text-center">
+          <div className="w-16 h-16 bg-brand/10 text-brand rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+            🚛
+          </div>
+          <h2 className="text-2xl font-extrabold text-gray-900 mb-2">Track Your Consignment</h2>
+          <p className="text-gray-500 mb-8 text-sm">Enter the Gate Pass Token ID from your booking to see live Mandi updates.</p>
+          
+          <form onSubmit={handleSearch} className="max-w-md mx-auto relative">
+            <input 
+              type="text" 
+              placeholder="e.g. AS-2026-WHT-1234"
+              value={searchToken}
+              onChange={(e) => setSearchToken(e.target.value)}
+              className="w-full px-5 py-4 pr-32 rounded-xl border-2 border-gray-200 focus:border-brand outline-none uppercase font-mono tracking-wider font-bold text-gray-800"
+            />
+            <button 
+              type="submit"
+              disabled={!searchToken.trim()}
+              className="absolute right-2 top-2 bottom-2 bg-brand text-white px-6 rounded-lg font-bold hover:bg-brand-dark transition-colors disabled:opacity-50"
+            >
+              Track
+            </button>
+          </form>
+          {errorMessage && <p className="text-red-500 mt-4 text-sm font-bold bg-red-50 py-2 rounded-lg">{errorMessage}</p>}
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="py-8 px-4 max-w-6xl mx-auto">
-      
-      {/* Top Banner & Header */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full uppercase tracking-wider">
-                <span className="w-2 h-2 rounded-full bg-green-600 animate-ping"></span>
-                Live Grain Journey Tracking
-              </span>
-              <span className="text-xs text-gray-500 font-medium">
-                Token: <strong className="text-gray-900 font-mono bg-gray-100 px-2 py-0.5 rounded">{procurement?.token_id || 'AS-2026-WHT-7821'}</strong>
-              </span>
-            </div>
-            
-            <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">
-              Procurement Status
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Farmer: <strong className="text-gray-900">{procurement?.farmer_name || 'Aman Kumar'}</strong> • Centre: <span className="text-gray-900 font-medium">{procurement?.centre_name || 'Meerut Central Agro Warehouse'}</span> • Slot: <span className="text-gray-900 font-medium">{procurement?.slot_name || '09:00 AM - 12:00 PM'}</span>
-            </p>
-          </div>
+  if (loading && !procurement) {
+    return (
+      <div className="py-20 flex flex-col items-center justify-center text-gray-500">
+        <div className="inline-block w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="font-semibold animate-pulse">Locating Consignment...</p>
+      </div>
+    );
+  }
 
-          {/* Manual Refresh Button */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => fetchProcurement(true)}
-              disabled={isRefreshing}
-              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-300 shadow-sm cursor-pointer"
+  const currentStage = procurement.current_stage || 1;
+  const netQuintals = procurement.net_weight_quintals || procurement.estimated_weight_quintals || 0;
+  const finalPayout = procurement.gross_payout || Math.round(netQuintals * (procurement.msp_rate || 2275));
+
+  const getAuditLogs = () => {
+    const logs = [];
+    if (currentStage >= 1) {
+      logs.push({
+        stage: 1, title: 'Intake Slot Confirmed', notes: `Allotted Shift: ${procurement.slot_name}`,
+        timestamp: new Date(procurement.updated_at || Date.now()).toLocaleString(), officer: 'System Auto-Generated'
+      });
+    }
+    if (currentStage >= 2) {
+      logs.push({
+        stage: 2, title: 'Gate Check-in Completed', notes: `Vehicle No: ${procurement.vehicle_number || 'TRUCK-123'} verified against pass.`,
+        timestamp: new Date(procurement.gate_in_at || Date.now()).toLocaleString(), officer: 'Gate Security Guard'
+      });
+    }
+    if (currentStage >= 3) {
+      logs.push({
+        stage: 3, title: 'Quality Assaying Passed', notes: `Moisture: ${procurement.moisture_percent || 11.6}%, Grade: ${procurement.grade || 'A FAQ'}`,
+        timestamp: new Date(procurement.assayed_at || Date.now()).toLocaleString(), officer: 'Lab Inspector (Stage 3)'
+      });
+    }
+    if (currentStage >= 4) {
+      logs.push({
+        stage: 4, title: 'Weighbridge Ticket Generated', notes: `Net Weight: ${netQuintals} Qtl across ${procurement.gunny_bags || 90} standard bags.`,
+        timestamp: new Date(procurement.weighed_at || Date.now()).toLocaleString(), officer: 'Weighbridge Operator'
+      });
+    }
+    if (currentStage >= 5) {
+      logs.push({
+        stage: 5, title: 'J-Form & Payout Disbursed', notes: `₹${finalPayout.toLocaleString('en-IN')} approved to farmer's registered bank account.`,
+        timestamp: new Date(procurement.approved_at || Date.now()).toLocaleString(), officer: 'Mandi Manager'
+      });
+    }
+    return logs.reverse();
+  };
+
+  const auditLogs = getAuditLogs();
+
+  return (
+    <div className="py-8 px-4 sm:px-6 max-w-5xl mx-auto font-sans">
+      
+      {/* Tracker Header */}
+      <div className="bg-gradient-to-r from-gray-900 to-slate-800 text-white p-6 sm:p-8 rounded-2xl shadow-lg mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+        {/* Subtle background icon */}
+        <div className="absolute right-0 top-0 text-9xl opacity-5 pointer-events-none transform translate-x-4 -translate-y-4">
+          🚛
+        </div>
+
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest backdrop-blur-sm border border-white/10">
+              Live Tracker
+            </span>
+            {isRefreshing && (
+              <span className="flex items-center gap-1 text-[10px] text-emerald-300 font-bold ml-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Syncing
+              </span>
+            )}
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Token: {procurement.token_id}</h1>
+          <p className="text-slate-300 mt-2 text-sm font-medium">
+            Mandi: <span className="text-white font-bold">{procurement.centre_name}</span>
+          </p>
+          <div className="mt-3 flex gap-4 text-xs font-bold text-slate-300">
+            <button 
+              onClick={() => setProcurement(null)}
+              className="hover:text-white underline decoration-slate-500 cursor-pointer"
             >
-              <span className={`text-sm ${isRefreshing ? 'animate-spin' : ''}`}>🔄</span>
-              <span>{isRefreshing ? 'Syncing...' : 'Refresh Now'}</span>
+              ← Track Another Token
             </button>
           </div>
         </div>
+
+        <div className="relative z-10 flex flex-col gap-3 md:items-end">
+          <button 
+            onClick={() => fetchProcurement(procurement.token_id, true)}
+            disabled={isRefreshing}
+            className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all border border-white/20 flex items-center gap-2 backdrop-blur-sm cursor-pointer disabled:opacity-50"
+          >
+            <span className={isRefreshing ? 'animate-spin' : ''}>🔄</span> 
+            {isRefreshing ? 'Refreshing...' : 'Refresh Live Status'}
+          </button>
+        </div>
       </div>
 
-      {/* Concise Consignment Timeline Bar with Alternating Tractor / Step Indicator */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-base font-extrabold text-gray-900 uppercase tracking-wider flex items-center gap-2">
-              <span>🌾</span> Consignment Timeline
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">Real-time procurement progress from appointment to payment readiness</p>
-          </div>
-          <div className="bg-green-50 border border-green-200 text-brand-dark px-3.5 py-1.5 rounded-full text-xs font-black flex items-center gap-1.5 shadow-xs">
-            <span className="inline-block transform -scale-x-100">🚜</span>
-            <span>Stage {currentStage} of 5</span>
-          </div>
-        </div>
-
-        {/* Progress Track Container */}
-        <div className="relative mx-3 sm:mx-8 mb-10 mt-6 pb-6">
+      {/* HORIZONTAL PROGRESS MILESTONES */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-10 mb-8 overflow-hidden">
+        <div className="relative">
+          {/* Connecting Line Base */}
+          <div className="absolute top-6 left-[10%] right-[10%] h-1.5 bg-gray-100 rounded-full z-0"></div>
           
-          {/* Background Track Line */}
-          <div className="absolute top-6 left-0 right-0 h-3 bg-gray-200 rounded-full z-0 overflow-hidden shadow-inner">
-            {/* Filled Progress Bar */}
-            <div 
-              className="h-full bg-gradient-to-r from-emerald-500 via-green-600 to-brand-dark rounded-full transition-all duration-700 ease-out"
-              style={{ width: `${progressPercent}%` }}
-            >
-              <div className="w-full h-full bg-white/20 animate-pulse"></div>
-            </div>
-          </div>
+          {/* Active Progress Line */}
+          <div 
+            className="absolute top-6 left-[10%] h-1.5 bg-brand rounded-full z-0 transition-all duration-700 ease-in-out"
+            style={{ width: `${(Math.min(currentStage, 5) - 1) * 20}%` }} // 4 intervals between 5 steps = 25% each. Width based on stage. (Wait, 5 steps = 4 gaps. 25% each gap. So: 0, 25, 50, 75, 100)
+          ></div>
 
-          {/* Equal-sized Milestone Nodes (Tractor alternates with step number on active node) */}
-          <div className="w-full flex justify-between px-0 relative z-10">
-            {STAGES.map((st) => {
-              const isCompleted = st.key < currentStage;
-              const isCurrent = st.key === currentStage;
-              const isUpcoming = st.key > currentStage;
+          {/* Corrected Active Progress Line Logic */}
+          <div 
+            className="absolute top-6 left-[10%] h-1.5 bg-brand rounded-full z-0 transition-all duration-700 ease-in-out"
+            style={{ width: `${(Math.max(1, Math.min(currentStage, 5)) - 1) * 25}%` }}
+          ></div>
 
+          {/* Nodes */}
+          <div className="relative z-10 flex justify-between">
+            {STAGES.map((stage) => {
+              const isActive = currentStage === stage.id;
+              const isPast = currentStage > stage.id;
+              
               return (
-                <div 
-                  key={st.key}
-                  className="flex flex-col items-center text-center max-w-[90px] sm:max-w-[130px]"
-                >
-                  {/* Step Node Circle (Same size w-12 h-12 as Tractor) */}
-                  <div 
-                    className={`w-12 h-12 rounded-full border-2 transition-all duration-500 flex items-center justify-center font-bold z-20 ${
-                      isCurrent
-                        ? 'bg-white border-brand text-brand-dark shadow-xl ring-4 ring-green-200 scale-110'
-                        : isCompleted 
-                        ? 'bg-brand text-white border-white shadow-md' 
-                        : 'bg-white text-gray-400 border-gray-300 shadow-xs'
-                    }`}
-                  >
-                    {isCompleted && (
-                      <span className="text-base font-black">✓</span>
-                    )}
-
-                    {isCurrent && (
-                      <div className="flex items-center justify-center transition-all duration-300">
-                        {showTractorIcon ? (
-                          <span className="text-2xl animate-pulse inline-block transform -scale-x-100">🚜</span>
-                        ) : (
-                          <span className="text-base font-black text-brand-dark">{st.key}</span>
-                        )}
-                      </div>
-                    )}
-
-                    {isUpcoming && (
-                      <span className="text-sm font-bold text-gray-400">{st.key}</span>
+                <div key={stage.id} className="flex flex-col items-center w-[20%] relative group">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-sm border-4 transition-all duration-300 ${
+                    isActive 
+                      ? 'bg-brand text-white border-green-200 shadow-[0_0_15px_rgba(34,197,94,0.4)] scale-110' 
+                      : isPast
+                        ? 'bg-brand text-white border-brand'
+                        : 'bg-white text-gray-300 border-gray-100'
+                  }`}>
+                    {isActive ? (
+                      showTractorIcon ? '🚛' : stage.id
+                    ) : isPast ? (
+                      '✓'
+                    ) : (
+                      stage.id
                     )}
                   </div>
-
-                  {/* Concise Milestone Label */}
-                  <div className="mt-2.5 flex flex-col items-center">
-                    <div className={`text-[11px] sm:text-xs font-bold leading-tight ${
-                      isCurrent ? 'text-brand-dark font-black' : isCompleted ? 'text-gray-900 font-bold' : 'text-gray-400'
-                    }`}>
-                      {st.label}
-                    </div>
-
-                    {/* Milestone Badges & Payment in Rupees under Step 5 */}
-                    <div className="mt-1">
-                      {st.key === 5 ? (
-                        <div className="font-mono font-black text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-300 shadow-2xs">
-                          ₹{grossPayout.toLocaleString()}
-                        </div>
-                      ) : (
-                        <>
-                          {isCompleted && (
-                            <span className="inline-block px-1.5 py-0.2 bg-green-100 text-green-800 rounded text-[9px] font-bold">
-                              Done
-                            </span>
-                          )}
-                          {isCurrent && (
-                            <span className="inline-block px-1.5 py-0.2 bg-amber-500 text-white rounded text-[9px] font-extrabold animate-pulse">
-                              Active
-                            </span>
-                          )}
-                          {isUpcoming && (
-                            <span className="inline-block text-gray-400 text-[9px] font-medium">
-                              Pending
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
+                  
+                  <div className="mt-4 text-center">
+                    <p className={`text-xs font-black uppercase tracking-wider mb-1 ${isActive ? 'text-brand' : isPast ? 'text-gray-800' : 'text-gray-400'}`}>
+                      {stage.title}
+                    </p>
+                    <p className="text-[10px] text-gray-500 hidden sm:block font-medium">
+                      {stage.subtitle}
+                    </p>
                   </div>
-
                 </div>
               );
             })}
           </div>
-
         </div>
-
-        {/* Ready for Payment Banner when stage 5 is reached */}
-        {currentStage === 5 && (
-          <div className="mt-4 bg-gradient-to-r from-green-600 to-emerald-700 text-white p-5 rounded-xl shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-2xl">
-                🎉
-              </div>
-              <div>
-                <h3 className="text-lg font-black tracking-tight">Procurement Completed & Approved for Payment!</h3>
-                <p className="text-xs text-green-100 mt-0.5">
-                  Official J-Form <strong className="text-white font-mono">{procurement?.j_form_number || 'JF-2026-98124'}</strong> generated. Direct handoff to Payment Module for DBT transfer is ready.
-                </p>
-              </div>
-            </div>
-
-            {/* Total Payment in Rupees Display */}
-            <div className="bg-white/15 backdrop-blur-xs border border-white/25 px-5 py-2.5 rounded-xl text-center shadow-inner">
-              <span className="text-[10px] text-green-100 uppercase tracking-widest font-extrabold block">Total Payment</span>
-              <span className="text-2xl font-black font-mono text-white">₹{grossPayout.toLocaleString()}</span>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Main Details Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      {/* FINAL PAYOUT HERO CARD (Only visible if Stage 5) */}
+      {currentStage === 5 && (
+        <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-2xl shadow-sm border border-emerald-200 p-8 mb-8 text-center animate-fade-in-up">
+          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm text-3xl border-2 border-emerald-100">
+            🎉
+          </div>
+          <h2 className="text-xl sm:text-2xl font-extrabold text-emerald-950 mb-2">
+            Payment Successfully Generated!
+          </h2>
+          <p className="text-sm text-emerald-700 max-w-lg mx-auto mb-6">
+            Your J-Form <strong>({procurement.j_form_number || 'JF-2026-98124'})</strong> has been issued. The final MSP payout has been initiated via Direct Benefit Transfer to your registered bank account.
+          </p>
+          
+          <div className="inline-block bg-white px-8 py-4 rounded-2xl shadow-sm border border-emerald-100">
+            <span className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Final Payout Amount</span>
+            <span className="block text-4xl font-black text-emerald-600">₹{finalPayout.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+      )}
+
+      {/* GRID CARDS: Specific Data */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         
-        {/* Card 1: Gate & Arrival Details */}
+        {/* Card 1: Gate & Vehicle */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
             <div className="flex items-center gap-2">
@@ -349,49 +276,49 @@ export default function ProcurementTracker() {
             <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${
               currentStage >= 2 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
             }`}>
-              {currentStage >= 2 ? 'Admitted' : 'Pending'}
+              {currentStage >= 2 ? 'Cleared' : 'Pending Arrival'}
             </span>
           </div>
 
           <div className="space-y-3 text-xs">
             <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Vehicle Number:</span>
-              <span className="font-bold text-gray-900 font-mono">{procurement?.vehicle_number || (currentStage >= 2 ? 'HR-05-AB-4412' : '--')}</span>
+              <span className="text-gray-500">Scheduled Date:</span>
+              <span className="font-bold text-gray-900">{procurement.slot_date}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Gate Pass Slip:</span>
-              <span className="font-bold text-gray-900 font-mono">{procurement?.gate_pass || (currentStage >= 2 ? 'GP-2026-8831' : '--')}</span>
+              <span className="text-gray-500">Intake Shift:</span>
+              <span className="font-bold text-gray-900 text-right w-1/2 line-clamp-1">{procurement.slot_name}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Farmer / Driver:</span>
-              <span className="font-bold text-gray-900">{procurement?.farmer_name || 'Aman Kumar'}</span>
+              <span className="text-gray-500">Vehicle No:</span>
+              <span className="font-bold text-gray-900 font-mono">{currentStage >= 2 ? (procurement.vehicle_number || 'TRUCK-123') : '--'}</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-gray-500">Mandi Gate:</span>
-              <span className="font-bold text-gray-900">{procurement?.centre_name || 'Meerut Central Agro Warehouse'}</span>
+              <span className="text-gray-500">Security Gate Pass:</span>
+              <span className="font-bold text-gray-900 font-mono">{currentStage >= 2 ? (procurement.gate_pass || 'GP-8831') : '--'}</span>
             </div>
           </div>
         </div>
 
-        {/* Card 2: Quality Inspection & Grading */}
+        {/* Card 2: Quality Assaying */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
             <div className="flex items-center gap-2">
               <span className="text-lg">🔬</span>
-              <h3 className="font-bold text-gray-900 text-sm">Quality Assaying</h3>
+              <h3 className="font-bold text-gray-900 text-sm">Quality Control</h3>
             </div>
             <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${
               currentStage >= 3 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
             }`}>
-              {currentStage >= 3 ? 'Assayed & Passed' : 'In Queue'}
+              {currentStage >= 3 ? 'Passed' : 'Pending Lab'}
             </span>
           </div>
 
           <div className="space-y-3 text-xs">
-            <div className="flex justify-between items-center py-1 border-b border-gray-50">
+            <div className="flex justify-between py-1 border-b border-gray-50 items-center">
               <span className="text-gray-500">Moisture Content:</span>
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-gray-900 text-sm">{currentStage >= 3 ? `${procurement?.moisture_percent || 11.6}%` : '--'}</span>
+              <div className="text-right">
+                <span className="font-bold text-gray-900 mr-2">{currentStage >= 3 ? `${procurement?.moisture_percent || 11.6}%` : '--'}</span>
                 {currentStage >= 3 && (
                   <span className="text-[10px] text-green-700 bg-green-100 px-1.5 py-0.2 rounded font-semibold">(Limit &le; 14%)</span>
                 )}
@@ -480,86 +407,6 @@ export default function ProcurementTracker() {
           ))}
         </div>
       </div>
-
-      {/* MANDI MANAGER STATION SIMULATOR / EVALUATION CONTROLLER */}
-      <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-xl border border-slate-800">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
-          <div className="flex items-center gap-3">
-            <span className="text-xl">⚡</span>
-            <div>
-              <h3 className="font-bold text-base text-white">Mandi Manager Station Simulator</h3>
-              <p className="text-xs text-slate-400">
-                Advance physical stations in MongoDB Atlas to observe live synchronization:
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowSimulator(!showSimulator)}
-            className="text-xs text-slate-400 hover:text-white font-semibold cursor-pointer"
-          >
-            {showSimulator ? 'Hide Controls ▲' : 'Show Controls ▼'}
-          </button>
-        </div>
-
-        {showSimulator && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-              <button
-                disabled={simulatorLoading}
-                onClick={handleResetToken}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              >
-                🔄 1. Reset (Slot Booked)
-              </button>
-
-              <button
-                disabled={simulatorLoading}
-                onClick={() => handleAdvanceStage(2, {
-                  vehicle_number: 'HR-05-AB-4412',
-                  gate_pass: 'GP-2026-8831'
-                })}
-                className="bg-blue-900/60 hover:bg-blue-800 text-blue-200 border border-blue-700/50 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              >
-                🚛 2. Mark Gate Entry
-              </button>
-
-              <button
-                disabled={simulatorLoading}
-                onClick={() => handleAdvanceStage(3, {
-                  moisture_percent: 11.6,
-                  grade: 'Grade A FAQ'
-                })}
-                className="bg-amber-900/60 hover:bg-amber-800 text-amber-200 border border-amber-700/50 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              >
-                🔬 3. Assaying Passed
-              </button>
-
-              <button
-                disabled={simulatorLoading}
-                onClick={() => handleAdvanceStage(4, {
-                  net_weight_quintals: 45.20,
-                  gunny_bags: 90
-                })}
-                className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700/50 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              >
-                ⚖️ 4. Weighbridge Done
-              </button>
-
-              <button
-                disabled={simulatorLoading}
-                onClick={() => handleAdvanceStage(5, {
-                  msp_rate: 2275,
-                  j_form_number: 'JF-2026-98124'
-                })}
-                className="bg-green-800 hover:bg-green-700 text-white border border-green-600 px-3 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer shadow-lg"
-              >
-                📄 5. Ready for Payment
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
     </div>
   );
 }
