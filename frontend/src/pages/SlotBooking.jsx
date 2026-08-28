@@ -127,14 +127,37 @@ export default function SlotBooking() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Developer Testing Helper State
+  const [testAadhaar, setTestAadhaar] = useState(null);
+  const [loadingTestAadhaar, setLoadingTestAadhaar] = useState(true);
+
   // Farmer's Passes from LocalStorage + Server
   const [allPasses, setAllPasses] = useState(() => getStoredPasses());
   const [loadingPasses, setLoadingPasses] = useState(false);
   const [activePassModal, setActivePassModal] = useState(null);
 
-  // Fetch Centres on Mount
+  // Fetch Centres & Test Farmer on Mount
   useEffect(() => {
     fetchCentres();
+    
+    // Auto-fetch the first registered farmer for quick QA testing
+    const fetchTestFarmer = async () => {
+      try {
+        let res;
+        try { res = await fetch(`${API_BASE}/api/farmers`); }
+        catch { res = await fetch('/api/farmers'); }
+        if (res && res.ok) {
+          const data = await res.json();
+          if (data.farmers && data.farmers.length > 0) {
+            setTestAadhaar(data.farmers[0].aadhar_number);
+          }
+        }
+      } catch (err) {
+      } finally {
+        setLoadingTestAadhaar(false);
+      }
+    };
+    fetchTestFarmer();
   }, []);
 
   // Fetch Slots when Centre or Date changes
@@ -691,6 +714,19 @@ export default function SlotBooking() {
                       </>
                     )}
                   </button>
+                </div>
+
+                {/* Developer Testing Helper */}
+                <div className="mt-2 text-2xs text-gray-400 pl-2">
+                  {loadingTestAadhaar ? (
+                    <span className="animate-pulse">Checking DB for test profiles...</span>
+                  ) : testAadhaar ? (
+                    <span>
+                      For testing use: <button onClick={() => setAadharInput(testAadhaar)} className="font-mono font-bold text-brand hover:underline cursor-pointer">{testAadhaar}</button>
+                    </span>
+                  ) : (
+                    <span className="text-amber-600 font-medium">No farmer registered for testing. Register in Module 1 first.</span>
+                  )}
                 </div>
 
                 {/* Verified Farmer Banner */}
