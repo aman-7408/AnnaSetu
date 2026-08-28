@@ -102,7 +102,7 @@ export default function Registration() {
     
     setIsLoading(true);
     try {
-      const res = await fetch('${API_BASE}/api/farmers/send-otp`, {
+      const res = await fetch(`${API_BASE}/api/farmers/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aadhar_number: aadhar })
@@ -124,7 +124,7 @@ export default function Registration() {
     setError('');
     setIsLoading(true);
     try {
-      const res = await fetch('${API_BASE}/api/farmers/verify-otp`, {
+      const res = await fetch(`${API_BASE}/api/farmers/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aadhar_number: aadhar, otp })
@@ -155,7 +155,7 @@ export default function Registration() {
     setIsLoading(true);
     
     try {
-      const res = await fetch('${API_BASE}/api/farmers/register`, {
+      const res = await fetch(`${API_BASE}/api/farmers/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, aadhar_number: aadhar })
