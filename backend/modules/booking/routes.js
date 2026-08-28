@@ -6,6 +6,7 @@ const Farmer = require('../registration/Farmer');
 const Centre = require('../capacity/Centre');
 const Slot = require('../capacity/Slot');
 const Procurement = require('../capacity/Procurement');
+const { sendNotification } = require('../notifications/notificationService');
 
 // Helper to generate official Token ID (e.g. AS-2026-WHT-7821)
 function generateTokenId(cropType, year = 2026) {
@@ -225,6 +226,23 @@ router.post('/create', async (req, res) => {
       },
       { upsert: true, new: true }
     );
+
+    // 10. Trigger Real-time In-App Notification
+    try {
+      await sendNotification({
+        farmer_id: farmer_aadhar.trim(),
+        recipient_name: resolvedFarmerName,
+        recipient_phone: resolvedFarmerPhone,
+        trigger_event: 'booking_confirmed',
+        metadata: {
+          date: bookingDate,
+          centre_name: centre.name,
+          token_no: tokenId
+        }
+      });
+    } catch (notifErr) {
+      console.warn('Silent notification trigger error:', notifErr.message);
+    }
 
     res.status(201).json({
       success: true,

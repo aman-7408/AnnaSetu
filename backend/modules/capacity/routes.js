@@ -3,6 +3,7 @@ const router = express.Router();
 const Centre = require('./Centre');
 const Slot = require('./Slot');
 const Procurement = require('./Procurement');
+const { sendNotification } = require('../notifications/notificationService');
 
 // 1. GET ALL CENTRES
 router.get('/centres', async (req, res) => {
@@ -285,6 +286,37 @@ router.post('/procurements/advance-stage', async (req, res) => {
     }
 
     await proc.save();
+
+    // Trigger in-app notification based on advanced stage
+    try {
+      if (target_stage === 2) {
+        await sendNotification({
+          farmer_id: '111122223333',
+          recipient_name: proc.farmer_name || 'Farmer',
+          recipient_phone: proc.farmer_phone || '',
+          trigger_event: 'queue_update',
+          metadata: {
+            vehicle_no: proc.vehicle_number || 'HR-05-AB-4412',
+            gate_pass: proc.gate_pass || 'GP-2026-8831'
+          }
+        });
+      } else if (target_stage === 5) {
+        await sendNotification({
+          farmer_id: '111122223333',
+          recipient_name: proc.farmer_name || 'Farmer',
+          recipient_phone: proc.farmer_phone || '',
+          trigger_event: 'payment_initiated',
+          metadata: {
+            amount: (proc.gross_payout || 102830).toLocaleString('en-IN'),
+            quantity: `${proc.net_weight_quintals || 45.2} Quintals`,
+            j_form_no: proc.j_form_number || 'JF-2026-98124'
+          }
+        });
+      }
+    } catch (notifErr) {
+      console.warn('Stage advancement notification error:', notifErr.message);
+    }
+
     res.json({ success: true, message: `Advanced to Stage ${target_stage} successfully!`, procurement: proc });
   } catch (err) {
     console.error('Error advancing procurement stage:', err);
