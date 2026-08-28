@@ -1,3 +1,4 @@
+require('dotenv').config();
 const http = require('http');
 const mongoose = require('mongoose');
 
@@ -9,8 +10,13 @@ const Centre = require('./modules/capacity/Centre');
 const Procurement = require('./modules/capacity/Procurement');
 const Notification = require('./modules/notifications/Notification');
 
-const MONGO_URI = 'mongodb+srv://amansinghk2006_db_user:YXGMRUBYQwFXglDv@cluster0.9vpxxkj.mongodb.net/annasetu?appName=Cluster0';
-const API_PORT = 5000;
+const MONGO_URI = process.env.MONGODB_URI;
+const API_PORT = process.env.PORT || 5000;
+
+if (!MONGO_URI) {
+  console.error('❌ MONGODB_URI is not set in environment (.env).');
+  process.exit(1);
+}
 
 function request(method, path, body = null) {
   return new Promise((resolve, reject) => {

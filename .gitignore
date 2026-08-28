@@ -9,8 +9,14 @@ frontend/node_modules/
 
 # Environment variables (CRITICAL)
 .env
+.env.*
+*.env
 backend/.env
+backend/.env.*
 frontend/.env
+frontend/.env.*
+!backend/.env.example
+!frontend/.env.example
 
 # macOS specific
 .DS_Store
