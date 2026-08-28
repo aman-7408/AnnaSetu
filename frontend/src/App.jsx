@@ -30,19 +30,14 @@ function NavigationBar({ userSession, onAdminClick }) {
         
         <ul className="hidden md:flex space-x-6 text-sm font-medium items-center">
           <li><Link to="/register" className="cursor-pointer hover:text-green-200 transition-colors">Register</Link></li>
-<<<<<<< HEAD
-          <li><Link to="/procurement" className="cursor-pointer hover:text-green-200 transition-colors">Procurement</Link></li>
-          <li className="cursor-pointer hover:text-green-200 transition-colors">Book Slot</li>
-          <li className="cursor-pointer hover:text-green-200 transition-colors">Notifications</li>
-=======
           <li><Link to="/book-slot" className="cursor-pointer hover:text-green-200 transition-colors">Book Slot</Link></li>
+          <li><Link to="/tracker" className="cursor-pointer hover:text-green-200 transition-colors">Tracker</Link></li>
           <li>
             <Link to="/notifications" className="cursor-pointer hover:text-green-200 transition-colors flex items-center gap-1.5">
               <span>Notifications</span>
               <span className="bg-emerald-400 text-emerald-950 text-[10px] font-black px-1.5 py-0.5 rounded-full">New</span>
             </Link>
           </li>
->>>>>>> main
           
           {/* Manager Link */}
           <li>
