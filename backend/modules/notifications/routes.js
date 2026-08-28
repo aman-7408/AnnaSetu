@@ -113,7 +113,7 @@ router.put('/farmer/:farmer_id/read-all', async (req, res) => {
       { farmer_id: req.params.farmer_id, is_read: false },
       { is_read: true }
     );
-    res.json({ message: 'All notifications marked as read.' });
+    res.json({ success: true, message: 'All notifications marked as read.' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

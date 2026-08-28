@@ -204,7 +204,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     try {
       let stageDetails = {};
       if (nextStage === 2) {
-        stageDetails = { vehicle_number: 'HR-05-AB-4412', gate_pass: 'GP-2026-8831' };
+        stageDetails = { gate_pass: 'GP-2026-8831' };
       } else if (nextStage === 3) {
         stageDetails = { moisture_percent: 11.6, purity_percent: 99.2, grade: 'Grade A FAQ' };
       } else if (nextStage === 4) {
@@ -222,7 +222,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       });
       const data = await res.json();
       if (data.success) {
-        showFeedback(`✓ Approved Stage ${nextStage}! Updated in MongoDB Atlas for Farmer & Preet.`);
+        showFeedback(`✓ Approved Stage ${nextStage}! Updated live across all official portals.`);
         fetchAllData(false);
       }
     } catch (err) {
@@ -230,19 +230,6 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       showError('Failed to advance procurement stage.');
     } finally {
       setIsAdvancingStage(false);
-    }
-  };
-
-  const handleResetToken = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/capacity/procurements/reset-demo-token`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        showFeedback('⚡ Demo Token reset to Stage 1 (Slot Active)!');
-        fetchAllData(true);
-      }
-    } catch (err) {
-      console.error('Error resetting token:', err);
     }
   };
 
@@ -421,13 +408,6 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
               <span className="text-xs text-emerald-300 bg-emerald-800/60 border border-emerald-600 px-3 py-1 rounded-full font-mono font-bold">
                 Token: {activeDemoProcurement.token_id}
               </span>
-              <button 
-                onClick={handleResetToken}
-                className="bg-emerald-800 hover:bg-emerald-700 text-emerald-200 text-[11px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer border border-emerald-600"
-                title="Reset demo token back to Stage 1"
-              >
-                ↺ Reset Token
-              </button>
             </div>
           </div>
 
@@ -456,7 +436,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
           {/* Interactive 5-Stage Step Approval Station */}
           <div className="space-y-4">
             <p className="text-xs font-bold text-emerald-200 uppercase tracking-wider">
-              Click to approve physical stations (Updates Farmer & Preet live):
+              Click to approve physical intake stations (Live synchronization across all portals):
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -588,7 +568,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
 
                 {activeDemoProcurement.current_stage === 5 && (
                   <span className="mt-2 text-[10px] font-extrabold bg-white/20 px-2 py-1 rounded text-center">
-                    ✓ Handed to Preet
+                    ✓ J-Form Approved (DBT Disbursed)
                   </span>
                 )}
               </div>
@@ -617,7 +597,11 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
               let badgeBg = 'bg-emerald-50 text-emerald-800 border-emerald-200';
               let statusLabel = '🟢 Normal Intake';
 
-              if (percent >= 85 || managerCentre.status === 'divert_active') {
+              if (managerCentre.status === 'divert_active') {
+                barColor = 'bg-amber-500';
+                badgeBg = 'bg-amber-50 text-amber-800 border-amber-200 animate-pulse';
+                statusLabel = '⚠️ Traffic Diverted';
+              } else if (percent >= 85) {
                 barColor = 'bg-red-500';
                 badgeBg = 'bg-red-50 text-red-800 border-red-200';
                 statusLabel = '🔴 Critical Load';
@@ -661,7 +645,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                     <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden p-0.5 border border-gray-200 shadow-inner">
                       <div 
                         className={`h-full rounded-full transition-all duration-700 ${barColor}`} 
-                        style={{ width: `${Math.min(100, Math.max(5, percent))}%` }}
+                        style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
                       ></div>
                     </div>
 

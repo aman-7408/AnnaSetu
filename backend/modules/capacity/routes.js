@@ -259,14 +259,13 @@ router.post('/procurements/advance-stage', async (req, res) => {
     let proc = await Procurement.findOne({ token_id });
 
     if (!proc) {
-      proc = new Procurement({ token_id, centre_name: 'Meerut Central Agro Warehouse', ...details });
+      return res.status(404).json({ error: 'Token not found in procurement registry' });
     }
 
     proc.current_stage = target_stage;
     proc.updated_at = new Date();
 
     if (target_stage === 2) {
-      proc.vehicle_number = details?.vehicle_number || 'HR-05-AB-4412';
       proc.gate_pass = details?.gate_pass || 'GP-2026-8831';
       proc.gate_in_at = new Date();
     } else if (target_stage === 3) {
@@ -296,7 +295,6 @@ router.post('/procurements/advance-stage', async (req, res) => {
           recipient_phone: proc.farmer_phone || '',
           trigger_event: 'queue_update',
           metadata: {
-            vehicle_no: proc.vehicle_number || 'HR-05-AB-4412',
             gate_pass: proc.gate_pass || 'GP-2026-8831'
           }
         });
@@ -321,25 +319,6 @@ router.post('/procurements/advance-stage', async (req, res) => {
   } catch (err) {
     console.error('Error advancing procurement stage:', err);
     res.status(500).json({ error: 'Failed to advance stage' });
-  }
-});
-
-router.post('/procurements/reset-demo-token', async (req, res) => {
-  try {
-    await Procurement.deleteMany({});
-    const demoItem = await Procurement.create({
-      token_id: 'AS-2026-WHT-7821',
-      farmer_name: 'Aman Kumar',
-      farmer_phone: '+91 98765 43210',
-      crop_type: 'Wheat (Sharbati A-Grade)',
-      centre_name: 'Meerut Central Agro Warehouse',
-      current_stage: 1,
-      slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)'
-    });
-    res.json({ success: true, message: 'Demo token reset to Stage 1!', procurement: demoItem });
-  } catch (err) {
-    console.error('Error resetting token:', err);
-    res.status(500).json({ error: 'Failed to reset demo token' });
   }
 });
 

@@ -170,10 +170,12 @@ export default function Notifications() {
       prev.map(n => n._id === id ? { ...n, is_read: true } : n)
     );
     setUnreadCount(prev => Math.max(0, prev - 1));
+    window.dispatchEvent(new CustomEvent('notifications-updated'));
 
     // 2. Background Database Update
     try {
       await fetch(`${API_BASE}/${id}/read`, { method: 'PUT' });
+      window.dispatchEvent(new CustomEvent('notifications-updated'));
     } catch (err) {
       console.error('Failed background mark read:', err);
     }
@@ -184,10 +186,12 @@ export default function Notifications() {
     // 1. INSTANT UI UPDATE (0ms delay)
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
+    window.dispatchEvent(new CustomEvent('notifications-updated'));
 
     // 2. Background Database Update
     try {
       await fetch(`${API_BASE}/farmer/${farmerId}/read-all`, { method: 'PUT' });
+      window.dispatchEvent(new CustomEvent('notifications-updated'));
     } catch (err) {
       console.error('Failed background mark all read:', err);
     }

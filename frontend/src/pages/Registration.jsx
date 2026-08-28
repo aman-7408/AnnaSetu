@@ -1,6 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_URL || "${API_BASE}";
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function Registration() {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ export default function Registration() {
   const [otpVerified, setOtpVerified] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [alreadyRegisteredData, setAlreadyRegisteredData] = useState(null);
   
   // Reference to auto-focus the OTP input
   const otpInputRef = useRef(null);
@@ -95,6 +97,7 @@ export default function Registration() {
 
   const sendOtp = async () => {
     setError('');
+    setAlreadyRegisteredData(null);
     if (aadhar.length !== 12) {
       setError('Please enter a valid 12-digit Aadhar Number.');
       return;
@@ -109,10 +112,12 @@ export default function Registration() {
       });
       const data = await res.json();
       
-      if (res.ok) {
+      if (res.ok && data.success) {
         setOtpSent(true);
+      } else if (res.status === 409 || data.already_registered) {
+        setAlreadyRegisteredData(data);
       } else {
-        setError(data.error);
+        setError(data.error || 'Failed to send OTP.');
       }
     } catch (err) {
       setError('Failed to connect to the server.');
@@ -293,14 +298,48 @@ export default function Registration() {
                   onChange={(e) => setAadhar(e.target.value.replace(/[^0-9]/g, ''))}
                 />
                 
-                {!otpSent && (
+                {!otpSent && !alreadyRegisteredData && (
                   <button 
                     onClick={sendOtp}
                     disabled={aadhar.length !== 12 || isLoading}
-                    className="mt-3 w-full bg-brand text-white font-bold py-3 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+                    className="mt-3 w-full bg-brand text-white font-bold py-3 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {isLoading ? 'Sending...' : 'Send OTP'}
                   </button>
+                )}
+
+                {alreadyRegisteredData && (
+                  <div className="mt-4 p-5 bg-amber-50 border-2 border-amber-300 rounded-2xl animate-fade-in-down text-center">
+                    <div className="w-12 h-12 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl shadow-inner">
+                      ℹ️
+                    </div>
+                    <h4 className="text-base font-extrabold text-amber-950 mb-1">
+                      Already Registered!
+                    </h4>
+                    <p className="text-xs text-amber-850 font-medium mb-5 leading-relaxed">
+                      Aadhaar <strong className="font-mono text-gray-900">{aadhar}</strong> is already registered in AnnaSetu under <strong className="text-amber-950">{alreadyRegisteredData.farmer_name || 'Registered Kisan'}</strong>. You do not need to register again.
+                    </p>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => navigate('/')}
+                        className="w-full bg-brand text-white font-bold py-3 rounded-xl hover:bg-brand-dark transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 text-xs sm:text-sm"
+                      >
+                        <span>🏠</span>
+                        <span>Go to Home Screen</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAlreadyRegisteredData(null);
+                          setAadhar('');
+                        }}
+                        className="w-full text-xs font-bold text-gray-500 hover:text-gray-800 py-1.5 cursor-pointer"
+                      >
+                        ← Enter Different Aadhaar
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -431,10 +470,11 @@ export default function Registration() {
                   <input 
                     required
                     type="text" 
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand uppercase"
+                    maxLength={11}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand uppercase font-mono"
                     placeholder="e.g. SBIN0001234"
                     value={formData.bank_ifsc}
-                    onChange={(e) => setFormData({...formData, bank_ifsc: e.target.value})}
+                    onChange={(e) => setFormData({...formData, bank_ifsc: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')})}
                   />
                 </div>
               </div>

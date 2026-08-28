@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import Home from './pages/Home';
 import Registration from './pages/Registration';
@@ -10,7 +10,31 @@ import Notifications from './pages/Notifications';
 
 function NavigationBar({ userSession, onAdminClick }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const isLoggedIn = !!userSession;
+
+  const checkUnread = async () => {
+    try {
+      const farmerId = localStorage.getItem('farmer_aadhar') || '111122223333';
+      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const res = await fetch(`${apiBase}/api/notifications/farmer/${farmerId}?unread_only=true`);
+      const data = await res.json();
+      if (data.success) {
+        setUnreadCount(data.unread_count || 0);
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    checkUnread();
+    const handler = () => checkUnread();
+    window.addEventListener('notifications-updated', handler);
+    const interval = setInterval(checkUnread, 10000);
+    return () => {
+      window.removeEventListener('notifications-updated', handler);
+      clearInterval(interval);
+    };
+  }, []);
 
   return (
     <nav className="bg-brand text-white shadow-md sticky top-0 z-50">
@@ -35,7 +59,11 @@ function NavigationBar({ userSession, onAdminClick }) {
           <li>
             <Link to="/notifications" className="cursor-pointer hover:text-green-200 transition-colors flex items-center gap-1.5">
               <span>Notifications</span>
-              <span className="bg-emerald-400 text-emerald-950 text-[10px] font-black px-1.5 py-0.5 rounded-full">New</span>
+              {unreadCount > 0 && (
+                <span className="bg-emerald-400 text-emerald-950 text-[10px] font-black px-1.5 py-0.5 rounded-full animate-pulse">
+                  {unreadCount}
+                </span>
+              )}
             </Link>
           </li>
           

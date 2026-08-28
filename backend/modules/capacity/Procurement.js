@@ -15,7 +15,6 @@ const procurementSchema = new mongoose.Schema({
 
   
   // Stage 2: Gate Check-in
-  vehicle_number: { type: String, default: '' },
   gate_pass: { type: String, default: '' },
   gate_in_at: { type: Date },
 

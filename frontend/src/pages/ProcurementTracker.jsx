@@ -44,11 +44,23 @@ export default function ProcurementTracker() {
     }
   }, [searchParams]);
 
-  const fetchProcurement = async (tokenId, isManual = false) => {
+  // Live Auto-Sync: Gently polls server every 6 seconds so the stepper advances in real time
+  useEffect(() => {
+    const urlToken = searchParams.get('token');
+    if (!urlToken) return;
+
+    const autoSyncTimer = setInterval(() => {
+      fetchProcurement(urlToken, false, true);
+    }, 6000);
+
+    return () => clearInterval(autoSyncTimer);
+  }, [searchParams]);
+
+  const fetchProcurement = async (tokenId, isManual = false, isSilent = false) => {
     if (!tokenId) return;
     if (isManual) setIsRefreshing(true);
-    else setLoading(true);
-    setErrorMessage(null);
+    else if (!isSilent) setLoading(true);
+    if (!isSilent) setErrorMessage(null);
 
     try {
       const res = await fetch(`${API_BASE}/procurements/${tokenId}`);
@@ -59,12 +71,14 @@ export default function ProcurementTracker() {
         throw new Error(data.error || 'Could not find Gate Pass Token.');
       }
     } catch (err) {
-      console.error('Fetch error:', err);
-      setErrorMessage(err.message);
-      setProcurement(null);
+      if (!isSilent) {
+        console.error('Fetch error:', err);
+        setErrorMessage(err.message);
+        setProcurement(null);
+      }
     } finally {
-      setLoading(false);
-      setIsRefreshing(false);
+      if (!isSilent) setLoading(false);
+      if (isManual) setIsRefreshing(false);
     }
   };
 
@@ -90,7 +104,7 @@ export default function ProcurementTracker() {
   // 5 Stages Definition
   const STAGES = [
     { id: 1, title: 'Slot Booked', subtitle: 'Gate Pass Active' },
-    { id: 2, title: 'Gate In', subtitle: 'Vehicle Arrived' },
+    { id: 2, title: 'Gate In', subtitle: 'Entry Verified' },
     { id: 3, title: 'Assaying', subtitle: 'Quality Lab Check' },
     { id: 4, title: 'Weighbridge', subtitle: 'Net Weight Finalized' },
     { id: 5, title: 'J-Form Payout', subtitle: 'MSP Disbursed' }
@@ -187,14 +201,14 @@ export default function ProcurementTracker() {
     }
     if (currentStage >= 2) {
       logs.push({
-        stage: 2, title: 'Gate Check-in Completed', notes: `Vehicle No: ${procurement.vehicle_number || 'HR-05-AB-4412'} verified against security pass.`,
+        stage: 2, title: 'Gate Check-in Completed', notes: `Gate entry verified against security pass #${procurement.gate_pass || 'GP-2026-8831'}.`,
         timestamp: new Date(procurement.gate_in_at || Date.now()).toLocaleString(), officer: 'Gate Security Guard'
       });
     }
     if (currentStage >= 3) {
       logs.push({
         stage: 3, title: 'Quality Assaying Passed', notes: `Moisture: ${procurement.moisture_percent || 11.6}%, Grade: ${procurement.grade || 'Grade A FAQ'}`,
-        timestamp: new Date(procurement.assayed_at || Date.now()).toLocaleString(), officer: 'Dr. V. Patel (Lab Inspector)'
+        timestamp: new Date(procurement.assayed_at || Date.now()).toLocaleString(), officer: 'Lab Inspector'
       });
     }
     if (currentStage >= 4) {
@@ -248,7 +262,7 @@ export default function ProcurementTracker() {
           <div className="mt-3 flex gap-4 text-xs font-bold text-slate-300">
             <button 
               onClick={handleResetSearch}
-              className="hover:text-white underline decoration-slate-500 cursor-pointer flex items-center gap-1"
+              className="text-slate-300 hover:text-white cursor-pointer flex items-center gap-1.5 transition-colors font-medium"
             >
               <span>🔍</span> Track Another Token
             </button>
@@ -295,7 +309,11 @@ export default function ProcurementTracker() {
                         : 'bg-white text-gray-300 border-gray-100'
                   }`}>
                     {isActive ? (
-                      showTractorIcon ? '🚛' : stage.id
+                      showTractorIcon ? (
+                        <span className="inline-block transform -scale-x-100">🚛</span>
+                      ) : (
+                        stage.id
+                      )
                     ) : isPast ? (
                       '✓'
                     ) : (
@@ -337,124 +355,6 @@ export default function ProcurementTracker() {
           </div>
         </div>
       )}
-
-      {/* GRID CARDS: Specific Data */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        
-        {/* Card 1: Gate & Vehicle */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🚛</span>
-              <h3 className="font-bold text-gray-900 text-sm">Gate Check-in</h3>
-            </div>
-            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${
-              currentStage >= 2 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
-            }`}>
-              {currentStage >= 2 ? 'Cleared' : 'Pending Arrival'}
-            </span>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Scheduled Date:</span>
-              <span className="font-bold text-gray-900">{procurement.slot_date || 'Today'}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Intake Shift:</span>
-              <span className="font-bold text-gray-900 text-right w-1/2 line-clamp-1">{procurement.slot_name || 'Slot 1: Morning'}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Vehicle No:</span>
-              <span className="font-bold text-gray-900 font-mono">{currentStage >= 2 ? (procurement.vehicle_number || 'HR-05-AB-4412') : '--'}</span>
-            </div>
-            <div className="flex justify-between py-1">
-              <span className="text-gray-500">Security Gate Pass:</span>
-              <span className="font-bold text-gray-900 font-mono">{currentStage >= 2 ? (procurement.gate_pass || 'GP-2026-8831') : '--'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Quality Assaying */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🔬</span>
-              <h3 className="font-bold text-gray-900 text-sm">Quality Control</h3>
-            </div>
-            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${
-              currentStage >= 3 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
-            }`}>
-              {currentStage >= 3 ? 'Passed' : 'Pending Lab'}
-            </span>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            <div className="flex justify-between py-1 border-b border-gray-50 items-center">
-              <span className="text-gray-500">Moisture Content:</span>
-              <div className="text-right">
-                <span className="font-bold text-gray-900 mr-2">{currentStage >= 3 ? `${procurement?.moisture_percent || 11.6}%` : '--'}</span>
-                {currentStage >= 3 && (
-                  <span className="text-[10px] text-green-700 bg-green-100 px-1.5 py-0.2 rounded font-semibold">(Limit &le; 14%)</span>
-                )}
-              </div>
-            </div>
-            <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Quality Grade:</span>
-              <span className="font-extrabold text-brand-dark bg-green-50 px-2 py-0.5 rounded border border-green-200">
-                {currentStage >= 3 ? (procurement?.grade || 'Grade A FAQ') : 'Pending Test'}
-              </span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Assaying Status:</span>
-              <span className="font-bold text-gray-900">{currentStage >= 3 ? 'Approved for Procurement' : 'Waiting for Lab Turn'}</span>
-            </div>
-            <div className="flex justify-between py-1">
-              <span className="text-gray-500">Assaying Officer:</span>
-              <span className="font-bold text-gray-900">Dr. V. Patel (Lab Inspector)</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Weighbridge & Net Quintals */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">⚖️</span>
-              <h3 className="font-bold text-gray-900 text-sm">Weighbridge & Bags</h3>
-            </div>
-            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase ${
-              currentStage >= 4 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
-            }`}>
-              {currentStage >= 4 ? 'Weighed & Unloaded' : 'Pending Weighment'}
-            </span>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Net Procurement Weight:</span>
-              <span className="font-extrabold text-base text-gray-900">
-                {currentStage >= 4 ? `${netQuintals} Qtl` : 'Pending'}
-              </span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Standard Gunny Bags:</span>
-              <span className="font-bold text-gray-900">{currentStage >= 4 ? `${procurement?.gunny_bags || Math.round(netQuintals * 2)} Bags (50kg)` : '--'}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-gray-50">
-              <span className="text-gray-500">Gross / Tare Weight:</span>
-              <span className="font-bold text-gray-900 font-mono">
-                {currentStage >= 4 ? `${Math.round((netQuintals * 100) + 3000).toLocaleString('en-IN')} kg / 3,000 kg` : '--'}
-              </span>
-            </div>
-            <div className="flex justify-between py-1">
-              <span className="text-gray-500">Weighbridge Slip No:</span>
-              <span className="font-bold text-gray-900 font-mono">{currentStage >= 4 ? (procurement.weighbridge_slip || 'WB-2026-9912') : '--'}</span>
-            </div>
-          </div>
-        </div>
-
-      </div>
 
       {/* Official Audit Trail & Officer Logs */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 mb-8">

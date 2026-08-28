@@ -784,7 +784,7 @@ export default function SlotBooking() {
                       const max = centre.daily_capacity_quintals || 1000;
                       const booked = centre.booked_capacity_quintals || 0;
                       const available = Math.max(0, max - booked);
-                      const util = Math.min(100, Math.round((booked / max) * 100));
+                      const util = max > 0 ? Math.min(100, Math.max(0, Math.round((booked / max) * 100))) : 0;
                       const isDiverted = centre.status === 'divert_active';
 
                       return (
@@ -952,10 +952,10 @@ export default function SlotBooking() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {slots.map((slot) => {
                       const isSelected = selectedSlot?.slot_code === slot.slot_code;
-                      const max = slot.max_capacity_quintals;
+                      const max = slot.max_capacity_quintals || 400;
                       const booked = slot.booked_capacity_quintals || 0;
                       const available = Math.max(0, max - booked);
-                      const util = Math.min(100, Math.round((booked / max) * 100));
+                      const util = max > 0 ? Math.min(100, Math.max(0, Math.round((booked / max) * 100))) : 0;
                       const isFull = available <= 0;
 
                       return (
@@ -1231,7 +1231,7 @@ export default function SlotBooking() {
                 </div>
 
                 <div className="inline-block bg-emerald-800 text-white px-4 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider mt-1">
-                  OFFICIAL DIGITAL GATE PASS (राष्ट्रीय अनाज प्रवेश पत्र)
+                  OFFICIAL DIGITAL GATE PASS
                 </div>
               </div>
 
@@ -1326,7 +1326,7 @@ export default function SlotBooking() {
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-2xs text-amber-900 space-y-1">
                 <p className="font-bold">⚠️ Gate Reporting Instructions:</p>
                 <p>1. Please report at Mandi entry terminal within your designated 3-hour shift window.</p>
-                <p>2. Keep physical Aadhaar card and tractor/vehicle registration ready for Stage 2 Gate Scan.</p>
+                <p>2. Keep physical Aadhaar card and digital Gate Pass Token ready for Stage 2 Gate Scan.</p>
               </div>
 
             </div>

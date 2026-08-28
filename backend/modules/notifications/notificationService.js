@@ -41,8 +41,8 @@ const TEMPLATES = {
   }),
 
   queue_update: (data) => ({
-    title: 'Tractor Line & Gate Check-in',
-    message: `Vehicle #${data.vehicle_no || 'HR-05-AB-4412'} is cleared at Gate Pass #${data.gate_pass || 'GP-2026-8831'}.`,
+    title: 'Mandi Gate Check-in Completed',
+    message: `Entry cleared and verified against Gate Pass #${data.gate_pass || 'GP-2026-8831'}.`,
     action_hint: 'Proceed to Quality Assaying station for moisture check.',
     category: 'queue'
   }),
@@ -146,7 +146,7 @@ async function seedDemoNotifications(farmer_id = '111122223333', name = 'Aman Ku
     },
     {
       trigger_event: 'queue_update',
-      metadata: { vehicle_no: 'HR-05-AB-4412', gate_pass: 'GP-2026-8831' }
+      metadata: { gate_pass: 'GP-2026-8831' }
     },
     {
       trigger_event: 'payment_initiated',
