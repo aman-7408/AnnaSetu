@@ -14,10 +14,13 @@ app.use(express.json());
 const farmerRoutes = require('./modules/registration/routes');
 const capacityRoutes = require('./modules/capacity/routes');
 const procurementRoutes = require('./modules/procurement/routes');
+const bookingRoutes = require('./modules/booking/routes');
 
 app.use('/api/farmers', farmerRoutes);
 app.use('/api/capacity', capacityRoutes);
 app.use('/api/procurement', procurementRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/notifications', require('./modules/notifications/routes'));
 
 // Test Base Route
 app.get('/', (req, res) => {

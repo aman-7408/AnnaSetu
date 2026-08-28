@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import Home from './pages/Home';
 import Registration from './pages/Registration';
+import SlotBooking from './pages/SlotBooking';
 import AdminConsole from './pages/AdminConsole';
 import AdminLoginModal from './components/AdminLoginModal';
 import ProcurementTracker from './pages/ProcurementTracker';
+import Notifications from './pages/Notifications';
 
 function NavigationBar({ userSession, onAdminClick }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -28,9 +30,19 @@ function NavigationBar({ userSession, onAdminClick }) {
         
         <ul className="hidden md:flex space-x-6 text-sm font-medium items-center">
           <li><Link to="/register" className="cursor-pointer hover:text-green-200 transition-colors">Register</Link></li>
+<<<<<<< HEAD
           <li><Link to="/procurement" className="cursor-pointer hover:text-green-200 transition-colors">Procurement</Link></li>
           <li className="cursor-pointer hover:text-green-200 transition-colors">Book Slot</li>
           <li className="cursor-pointer hover:text-green-200 transition-colors">Notifications</li>
+=======
+          <li><Link to="/book-slot" className="cursor-pointer hover:text-green-200 transition-colors">Book Slot</Link></li>
+          <li>
+            <Link to="/notifications" className="cursor-pointer hover:text-green-200 transition-colors flex items-center gap-1.5">
+              <span>Notifications</span>
+              <span className="bg-emerald-400 text-emerald-950 text-[10px] font-black px-1.5 py-0.5 rounded-full">New</span>
+            </Link>
+          </li>
+>>>>>>> main
           
           {/* Manager Link */}
           <li>
@@ -68,9 +80,9 @@ function NavigationBar({ userSession, onAdminClick }) {
       {isMenuOpen && (
         <div className="md:hidden bg-brand-dark px-4 pt-2 pb-4 space-y-2 shadow-inner border-t border-brand">
           <Link to="/register" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Register</Link>
-          <Link to="/procurement" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Procurement Tracker</Link>
-          <div className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer">Book Slot</div>
-          <div className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer">Notifications</div>
+          <Link to="/book-slot" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Book Slot</Link>
+          <Link to="/tracker" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Tracker</Link>
+          <Link to="/notifications" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Notifications</Link>
           <button 
             onClick={() => { setIsMenuOpen(false); onAdminClick(); }}
             className="w-full text-left block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer font-bold text-yellow-300"
@@ -137,8 +149,9 @@ function MainLayout() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/register" element={<Registration />} />
-            <Route path="/procurement" element={<ProcurementTracker />} />
+            <Route path="/book-slot" element={<SlotBooking />} />
             <Route path="/tracker" element={<ProcurementTracker />} />
+            <Route path="/notifications" element={<Notifications />} />
             <Route 
               path="/admin" 
               element={

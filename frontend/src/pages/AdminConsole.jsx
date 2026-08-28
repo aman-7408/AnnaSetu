@@ -1,3 +1,4 @@
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 import React, { useState, useEffect } from 'react';
 
 export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
@@ -22,13 +23,13 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
   const fetchAllData = async (showSyncIndicator = false) => {
     if (showSyncIndicator) setIsSyncing(true);
     try {
-      const resCentres = await fetch(`http://localhost:5000/api/capacity/centres`);
+      const resCentres = await fetch(`${API_BASE}/api/capacity/centres`);
       const dataCentres = await resCentres.json();
       if (dataCentres.success) {
         setCentres(dataCentres.centres);
       }
 
-      const resProc = await fetch(`http://localhost:5000/api/capacity/procurements`);
+      const resProc = await fetch(`${API_BASE}/api/capacity/procurements`);
       const dataProc = await resProc.json();
       if (dataProc.success) {
         setProcurements(dataProc.procurements);
@@ -49,7 +50,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
   // 2. Fetch Slots for a centre
   const fetchSlots = async (centreId) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/capacity/centres/${centreId}/slots`);
+      const res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/slots`);
       const data = await res.json();
       if (data.success) {
         setSlotsData(prev => ({ ...prev, [centreId]: data.slots }));
@@ -102,7 +103,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     }
 
     try {
-      const res = await fetch(`http://localhost:5000/api/capacity/centres/${centreId}/capacity`, {
+      const res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/capacity`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ daily_capacity_quintals: newCap })
@@ -154,7 +155,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
 
     setIsSavingShifts(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/capacity/centres/${centreId}/slots`, {
+      const res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/slots`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slots: updatedSlotsPayload })
@@ -179,7 +180,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
   const handleToggleDivert = async (centreId, currentStatus) => {
     const isCurrentlyDiverting = currentStatus === 'divert_active';
     try {
-      const res = await fetch(`http://localhost:5000/api/capacity/centres/${centreId}/divert`, {
+      const res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/divert`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -207,12 +208,14 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       } else if (nextStage === 3) {
         stageDetails = { moisture_percent: 11.6, purity_percent: 99.2, grade: 'Grade A FAQ' };
       } else if (nextStage === 4) {
-        stageDetails = { net_weight_quintals: 45.20, gunny_bags: 90 };
+        // Dynamically calculate based on the actual farmer's booked weight
+        const w = activeDemoProcurement.estimated_weight_quintals || 45.20;
+        stageDetails = { net_weight_quintals: w, gunny_bags: Math.round(w * 2) };
       } else if (nextStage === 5) {
         stageDetails = { msp_rate: 2275, j_form_number: 'JF-2026-98124' };
       }
 
-      const res = await fetch(`http://localhost:5000/api/capacity/procurements/advance-stage`, {
+      const res = await fetch(`${API_BASE}/api/capacity/procurements/advance-stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token_id: tokenId, target_stage: nextStage, details: stageDetails })
@@ -232,7 +235,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
 
   const handleResetToken = async () => {
     try {
-      const res = await fetch(`http://localhost:5000/api/capacity/procurements/reset-demo-token`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/api/capacity/procurements/reset-demo-token`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         showFeedback('⚡ Demo Token reset to Stage 1 (Slot Active)!');
@@ -245,7 +248,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
 
   const handleResetSeed = async () => {
     try {
-      const res = await fetch(`http://localhost:5000/api/capacity/seed`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/api/capacity/seed`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         showFeedback('⚡ All Demo Mandi Data Reset to Default!');
@@ -542,7 +545,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                     <span>{activeDemoProcurement.current_stage >= 4 ? '✅' : '⚖️'}</span>
                   </div>
                   <h5 className="font-extrabold text-xs">Weighbridge</h5>
-                  <p className="text-[10px] text-emerald-200 mt-0.5">45.20 Qtl • 90 Bags</p>
+                  <p className="text-[10px] text-emerald-200 mt-0.5">{activeDemoProcurement.net_weight_quintals || activeDemoProcurement.estimated_weight_quintals || 45.20} Qtl • {activeDemoProcurement.gunny_bags || Math.round((activeDemoProcurement.estimated_weight_quintals || 45.20) * 2)} Bags</p>
                 </div>
 
                 {activeDemoProcurement.current_stage === 3 && (
@@ -570,7 +573,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                     <span>{activeDemoProcurement.current_stage >= 5 ? '💰' : '📄'}</span>
                   </div>
                   <h5 className="font-extrabold text-xs">Approved Payout</h5>
-                  <p className="text-[10px] text-emerald-200 mt-0.5">₹1,02,830 (JF-98124)</p>
+                  <p className="text-[10px] text-emerald-200 mt-0.5">₹{(activeDemoProcurement.gross_payout || Math.round((activeDemoProcurement.net_weight_quintals || activeDemoProcurement.estimated_weight_quintals || 45.20) * 2275)).toLocaleString('en-IN')} ({activeDemoProcurement.j_form_number || 'JF-2026-98124'})</p>
                 </div>
 
                 {activeDemoProcurement.current_stage === 4 && (

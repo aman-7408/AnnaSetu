@@ -11,6 +11,8 @@ const procurementSchema = new mongoose.Schema({
   // Stage 1: Slot Active
   slot_name: { type: String, default: 'Slot 1: Morning (09:00 AM - 12:00 PM)' },
   slot_date: { type: String, default: () => new Date().toISOString().split('T')[0] },
+  estimated_weight_quintals: { type: Number, default: 0 },
+
   
   // Stage 2: Gate Check-in
   vehicle_number: { type: String, default: '' },
