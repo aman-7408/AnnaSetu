@@ -1324,9 +1324,10 @@ export default function SlotBooking() {
 
               {/* Instructions Footer */}
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-2xs text-amber-900 space-y-1">
-                <p className="font-bold">⚠️ Gate Reporting Instructions:</p>
+                <p className="font-bold">⚠️ Gate Reporting & Settlement Instructions:</p>
                 <p>1. Please report at Mandi entry terminal within your designated 3-hour shift window.</p>
                 <p>2. Keep physical Aadhaar card and digital Gate Pass Token ready for Stage 2 Gate Scan.</p>
+                <p className="text-emerald-800 font-medium">💡 Net MSP payout will be credited via Direct Benefit Transfer (DBT) and viewable under the DBT Payments tab upon Stage 5 Mandi completion.</p>
               </div>
 
             </div>

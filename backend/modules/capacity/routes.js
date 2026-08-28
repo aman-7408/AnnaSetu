@@ -3,6 +3,8 @@ const router = express.Router();
 const Centre = require('./Centre');
 const Slot = require('./Slot');
 const Procurement = require('./Procurement');
+const Payment = require('../payment/Payment');
+const Farmer = require('../registration/Farmer');
 const { sendNotification } = require('../notifications/notificationService');
 
 // 1. GET ALL CENTRES
@@ -286,7 +288,7 @@ router.post('/procurements/advance-stage', async (req, res) => {
 
     await proc.save();
 
-    // Trigger in-app notification based on advanced stage
+    // Trigger Module 6 DBT Payment Creation & In-App Alerts
     try {
       if (target_stage === 2) {
         await sendNotification({
@@ -299,6 +301,39 @@ router.post('/procurements/advance-stage', async (req, res) => {
           }
         });
       } else if (target_stage === 5) {
+        // Auto-create/sync DBT Payment record in Module 6
+        try {
+          const farmerRec = await Farmer.findOne({ aadhar_number: '111122223333' });
+          const bankAcc = farmerRec?.bank_account_number || '000012345678';
+          const bankIfsc = farmerRec?.bank_ifsc || 'SBIN0001234';
+          const randomUtr = `UTR-2026-PFMS-${Math.floor(100000 + Math.random() * 900000)}`;
+          const randomPmt = `PMT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+          let existingPayment = await Payment.findOne({ token_id: proc.token_id });
+          if (!existingPayment) {
+            await Payment.create({
+              payment_id: randomPmt,
+              transaction_utr: randomUtr,
+              token_id: proc.token_id,
+              farmer_aadhar: '111122223333',
+              farmer_name: proc.farmer_name || 'Aman Kumar',
+              farmer_phone: proc.farmer_phone || '9876543210',
+              crop_type: proc.crop_type || 'Wheat (Sharbati A-Grade)',
+              net_weight_quintals: proc.net_weight_quintals || 45.20,
+              msp_rate: proc.msp_rate || 2275,
+              gross_amount: proc.gross_payout || 102830,
+              bank_account_number: bankAcc,
+              bank_ifsc: bankIfsc,
+              bank_name: 'State Bank of India',
+              j_form_number: proc.j_form_number || 'JF-2026-98124',
+              payment_status: 'PAID',
+              disbursed_at: new Date()
+            });
+          }
+        } catch (pmtErr) {
+          console.warn('Payment record creation error:', pmtErr.message);
+        }
+
         await sendNotification({
           farmer_id: '111122223333',
           recipient_name: proc.farmer_name || 'Farmer',

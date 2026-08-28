@@ -68,9 +68,11 @@ router.get('/farmer/:farmer_id', async (req, res) => {
     const totalCount = await Notification.countDocuments({ farmer_id });
 
     res.json({
-      notifications,
+      success: true,
+      count: notifications.length,
       unread_count: unreadCount,
-      total_count: totalCount
+      total_count: totalCount,
+      notifications
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
