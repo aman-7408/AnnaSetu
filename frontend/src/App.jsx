@@ -7,6 +7,7 @@ import AdminConsole from './pages/AdminConsole';
 import AdminLoginModal from './components/AdminLoginModal';
 import ProcurementTracker from './pages/ProcurementTracker';
 import Notifications from './pages/Notifications';
+import PaymentStatus from './pages/PaymentStatus';
 
 function NavigationBar({ userSession, onAdminClick }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -56,6 +57,7 @@ function NavigationBar({ userSession, onAdminClick }) {
           <li><Link to="/register" className="cursor-pointer hover:text-green-200 transition-colors">Register</Link></li>
           <li><Link to="/book-slot" className="cursor-pointer hover:text-green-200 transition-colors">Book Slot</Link></li>
           <li><Link to="/tracker" className="cursor-pointer hover:text-green-200 transition-colors">Tracker</Link></li>
+          <li><Link to="/payments" className="cursor-pointer hover:text-green-200 transition-colors">DBT Payments</Link></li>
           <li>
             <Link to="/notifications" className="cursor-pointer hover:text-green-200 transition-colors flex items-center gap-1.5">
               <span>Notifications</span>
@@ -105,6 +107,7 @@ function NavigationBar({ userSession, onAdminClick }) {
           <Link to="/register" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Register</Link>
           <Link to="/book-slot" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Book Slot</Link>
           <Link to="/tracker" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Tracker</Link>
+          <Link to="/payments" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>DBT Payments</Link>
           <Link to="/notifications" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-brand transition-colors cursor-pointer" onClick={() => setIsMenuOpen(false)}>Notifications</Link>
           <button 
             onClick={() => { setIsMenuOpen(false); onAdminClick(); }}
@@ -174,6 +177,7 @@ function MainLayout() {
             <Route path="/register" element={<Registration />} />
             <Route path="/book-slot" element={<SlotBooking />} />
             <Route path="/tracker" element={<ProcurementTracker />} />
+            <Route path="/payments" element={<PaymentStatus />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route 
               path="/admin" 
