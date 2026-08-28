@@ -1105,7 +1105,7 @@ export default function SlotBooking() {
                           value={weightQuintals}
                           onChange={(e) => setWeightQuintals(e.target.value)}
                           className="w-full pl-4 pr-16 py-3 border-2 border-emerald-300 rounded-xl focus:border-brand focus:outline-none font-bold text-lg text-emerald-950"
-                          placeholder="e.g. 45"
+                          placeholder="enter quantity"
                         />
                         <span className="absolute right-4 top-3.5 text-xs font-bold text-gray-400">Quintals</span>
                       </div>
