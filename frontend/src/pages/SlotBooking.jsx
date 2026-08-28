@@ -100,6 +100,10 @@ const getStoredPasses = () => {
 };
 
 export default function SlotBooking() {
+  // Timezone-safe local date to prevent booking in the past
+  const tzOffset = new Date().getTimezoneOffset() * 60000;
+  const todayLocal = new Date(Date.now() - tzOffset).toISOString().split('T')[0];
+
   const [activeTab, setActiveTab] = useState('book'); // 'book' | 'passes'
   const [currentStep, setCurrentStep] = useState(1); // 1: Farmer & Mandi, 2: Shift, 3: Crop & Weight
 
@@ -112,6 +116,7 @@ export default function SlotBooking() {
   // Booking Form State
   const [selectedFarmer, setSelectedFarmer] = useState({ name: 'Unregistered', aadhar: '', phone: '---', land_size: '---', plot_number: '---', address: '---' });
   const [aadharInput, setAadharInput] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
   const [selectedCentre, setSelectedCentre] = useState(FALLBACK_CENTRES[0]);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -193,13 +198,13 @@ export default function SlotBooking() {
     }
   };
 
-  const handleFarmerLookup = async (aadharToLookup) => {
-    const aadhar = (aadharToLookup || aadharInput || '').trim();
-    if (!aadhar || aadhar.length < 12) {
+  const handleFarmerLookup = async (aadhar) => {
+    if (!aadhar || aadhar.length !== 12) {
       setErrorMessage('Please enter a valid 12-digit Aadhaar number.');
       return;
     }
     setErrorMessage('');
+    setIsVerifying(true);
 
     try {
       let res;
@@ -221,6 +226,7 @@ export default function SlotBooking() {
             address: match.address
           });
           syncFarmerPassesFromServer(aadhar);
+          setIsVerifying(false);
           return;
         }
       }
@@ -228,18 +234,16 @@ export default function SlotBooking() {
       console.error('API Error during farmer lookup:', err);
     }
 
-    // STRICT PRODUCTION MODE (Option B)
-    // If we reach here, the Aadhaar was not found in the live database.
     setErrorMessage('Aadhaar not found. Please register in AnnaSetu first.');
-    // Fix: Provide a safe blank object to prevent React 'Cannot read properties' UI crashes
-      setSelectedFarmer({
-        name: 'Unregistered',
-        aadhar: aadhar,
-        phone: '---',
-        land_size: '---',
-        plot_number: '---',
-        address: '---'
-      });
+    setSelectedFarmer({
+      name: 'Unregistered',
+      aadhar: aadhar,
+      phone: '---',
+      land_size: '---',
+      plot_number: '---',
+      address: '---'
+    });
+    setIsVerifying(false);
   };
 
   const syncFarmerPassesFromServer = async (aadhar) => {
@@ -672,10 +676,20 @@ export default function SlotBooking() {
                   </div>
                   <button
                     onClick={() => handleFarmerLookup(aadharInput)}
-                    className="bg-emerald-800 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-emerald-900 transition-colors shrink-0 shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                    disabled={isVerifying}
+                    className="bg-emerald-800 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-emerald-900 transition-colors shrink-0 shadow-sm flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-wait cursor-pointer min-w-[160px]"
                   >
-                    <span>🔍</span>
-                    <span>Verify Aadhaar</span>
+                    {isVerifying ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Verifying...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🔍</span>
+                        <span>Verify Aadhaar</span>
+                      </>
+                    )}
                   </button>
                 </div>
 
@@ -847,7 +861,7 @@ export default function SlotBooking() {
                     <input
                       type="date"
                       value={selectedDate}
-                      min={new Date().toISOString().split('T')[0]}
+                      min={todayLocal}
                       onChange={(e) => {
                         setSelectedDate(e.target.value);
                         setSelectedSlot(null);
