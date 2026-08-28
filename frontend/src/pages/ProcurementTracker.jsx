@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/capacity';
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api/capacity';
 
 export default function ProcurementTracker() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
   const [procurement, setProcurement] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showTractorIcon, setShowTractorIcon] = useState(true);
   const [searchToken, setSearchToken] = useState('');
+  const [recentTokens, setRecentTokens] = useState([]);
 
   // Alternates between Tractor icon and Step Number for the active milestone node
   useEffect(() => {
@@ -18,6 +23,27 @@ export default function ProcurementTracker() {
     return () => clearInterval(timer);
   }, []);
 
+  // Fetch recent active tokens from DB for quick-select chips
+  useEffect(() => {
+    fetch(`${API_BASE}/procurements`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.procurements) {
+          setRecentTokens(data.procurements.slice(0, 5));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Read URL query parameter ?token=AS-2026-xxx
+  useEffect(() => {
+    const urlToken = searchParams.get('token');
+    if (urlToken) {
+      setSearchToken(urlToken);
+      fetchProcurement(urlToken);
+    }
+  }, [searchParams]);
+
   const fetchProcurement = async (tokenId, isManual = false) => {
     if (!tokenId) return;
     if (isManual) setIsRefreshing(true);
@@ -25,7 +51,6 @@ export default function ProcurementTracker() {
     setErrorMessage(null);
 
     try {
-      // Switch from the generic bulk fetch to the secure token-specific fetch
       const res = await fetch(`${API_BASE}/procurements/${tokenId}`);
       const data = await res.json();
       if (res.ok && data.success) {
@@ -45,7 +70,21 @@ export default function ProcurementTracker() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchProcurement(searchToken.trim());
+    if (!searchToken.trim()) return;
+    setSearchParams({ token: searchToken.trim().toUpperCase() });
+    fetchProcurement(searchToken.trim().toUpperCase());
+  };
+
+  const handleSelectChip = (token) => {
+    setSearchToken(token);
+    setSearchParams({ token });
+    fetchProcurement(token);
+  };
+
+  const handleResetSearch = () => {
+    setProcurement(null);
+    setSearchToken('');
+    setSearchParams({});
   };
 
   // 5 Stages Definition
@@ -57,43 +96,79 @@ export default function ProcurementTracker() {
     { id: 5, title: 'J-Form Payout', subtitle: 'MSP Disbursed' }
   ];
 
-  if (!procurement && !loading && !isRefreshing) {
+  // VIEW 1: SEARCH STATE
+  if (!procurement && !loading) {
     return (
-      <div className="py-8 px-4 sm:px-6 max-w-4xl mx-auto font-sans min-h-[60vh] flex flex-col items-center justify-center">
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 w-full text-center">
-          <div className="w-16 h-16 bg-brand/10 text-brand rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
-            🚛
-          </div>
-          <h2 className="text-2xl font-extrabold text-gray-900 mb-2">Track Your Consignment</h2>
-          <p className="text-gray-500 mb-8 text-sm">Enter the Gate Pass Token ID from your booking to see live Mandi updates.</p>
+      <div className="py-12 px-4 sm:px-6 max-w-4xl mx-auto font-sans min-h-[65vh] flex flex-col items-center justify-center">
+        <div className="bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-gray-200 w-full text-center relative overflow-hidden">
           
-          <form onSubmit={handleSearch} className="max-w-md mx-auto relative">
+          <div className="w-16 h-16 bg-emerald-100 text-emerald-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">
+            🛰️
+          </div>
+          
+          <h2 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2">
+            Live Grain Consignment Tracker
+          </h2>
+          <p className="text-gray-500 mb-8 text-sm max-w-md mx-auto">
+            Enter your official Gate Pass Token ID to track physical Mandi intake, quality assaying, and DBT payout in real-time.
+          </p>
+          
+          <form onSubmit={handleSearch} className="max-w-md mx-auto relative mb-6">
             <input 
               type="text" 
-              placeholder="e.g. AS-2026-WHT-1234"
+              placeholder="e.g. AS-2026-WHT-7821"
               value={searchToken}
               onChange={(e) => setSearchToken(e.target.value)}
-              className="w-full px-5 py-4 pr-32 rounded-xl border-2 border-gray-200 focus:border-brand outline-none uppercase font-mono tracking-wider font-bold text-gray-800"
+              className="w-full px-5 py-4 pr-32 rounded-2xl border-2 border-gray-200 focus:border-brand focus:ring-4 focus:ring-emerald-50 outline-none uppercase font-mono tracking-wider font-bold text-gray-800 transition-all text-sm sm:text-base"
             />
             <button 
               type="submit"
               disabled={!searchToken.trim()}
-              className="absolute right-2 top-2 bottom-2 bg-brand text-white px-6 rounded-lg font-bold hover:bg-brand-dark transition-colors disabled:opacity-50"
+              className="absolute right-2 top-2 bottom-2 bg-brand text-white px-6 rounded-xl font-bold hover:bg-brand-dark transition-all disabled:opacity-50 cursor-pointer shadow-md text-xs sm:text-sm"
             >
-              Track
+              Track Live
             </button>
           </form>
-          {errorMessage && <p className="text-red-500 mt-4 text-sm font-bold bg-red-50 py-2 rounded-lg">{errorMessage}</p>}
+
+          {errorMessage && (
+            <div className="max-w-md mx-auto mb-6 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-bold">
+              ⚠️ {errorMessage}
+            </div>
+          )}
+
+          {/* Quick-Select Recent Tokens */}
+          {recentTokens.length > 0 && (
+            <div className="pt-6 border-t border-gray-100 text-left">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 text-center">
+                Or click an active Mandi consignment to inspect:
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {recentTokens.map(p => (
+                  <button
+                    key={p.token_id}
+                    onClick={() => handleSelectChip(p.token_id)}
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold transition-all hover:scale-105 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>●</span>
+                    <span>{p.token_id}</span>
+                    <span className="text-[10px] text-emerald-600 font-sans font-medium">({p.farmer_name?.split(' ')[0]})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     );
   }
 
+  // VIEW 2: LOADING STATE
   if (loading && !procurement) {
     return (
-      <div className="py-20 flex flex-col items-center justify-center text-gray-500">
-        <div className="inline-block w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="font-semibold animate-pulse">Locating Consignment...</p>
+      <div className="py-32 flex flex-col items-center justify-center text-gray-500 font-sans">
+        <div className="inline-block w-10 h-10 border-4 border-brand border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="font-bold text-gray-700 animate-pulse">Syncing Consignment from MongoDB Atlas...</p>
       </div>
     );
   }
@@ -106,31 +181,31 @@ export default function ProcurementTracker() {
     const logs = [];
     if (currentStage >= 1) {
       logs.push({
-        stage: 1, title: 'Intake Slot Confirmed', notes: `Allotted Shift: ${procurement.slot_name}`,
+        stage: 1, title: 'Intake Slot Confirmed', notes: `Allotted Shift: ${procurement.slot_name || 'Slot 1: Morning'}`,
         timestamp: new Date(procurement.updated_at || Date.now()).toLocaleString(), officer: 'System Auto-Generated'
       });
     }
     if (currentStage >= 2) {
       logs.push({
-        stage: 2, title: 'Gate Check-in Completed', notes: `Vehicle No: ${procurement.vehicle_number || 'TRUCK-123'} verified against pass.`,
+        stage: 2, title: 'Gate Check-in Completed', notes: `Vehicle No: ${procurement.vehicle_number || 'HR-05-AB-4412'} verified against security pass.`,
         timestamp: new Date(procurement.gate_in_at || Date.now()).toLocaleString(), officer: 'Gate Security Guard'
       });
     }
     if (currentStage >= 3) {
       logs.push({
-        stage: 3, title: 'Quality Assaying Passed', notes: `Moisture: ${procurement.moisture_percent || 11.6}%, Grade: ${procurement.grade || 'A FAQ'}`,
-        timestamp: new Date(procurement.assayed_at || Date.now()).toLocaleString(), officer: 'Lab Inspector (Stage 3)'
+        stage: 3, title: 'Quality Assaying Passed', notes: `Moisture: ${procurement.moisture_percent || 11.6}%, Grade: ${procurement.grade || 'Grade A FAQ'}`,
+        timestamp: new Date(procurement.assayed_at || Date.now()).toLocaleString(), officer: 'Dr. V. Patel (Lab Inspector)'
       });
     }
     if (currentStage >= 4) {
       logs.push({
-        stage: 4, title: 'Weighbridge Ticket Generated', notes: `Net Weight: ${netQuintals} Qtl across ${procurement.gunny_bags || 90} standard bags.`,
+        stage: 4, title: 'Weighbridge Ticket Generated', notes: `Net Weight: ${netQuintals} Qtl across ${procurement.gunny_bags || Math.round(netQuintals * 2)} bags.`,
         timestamp: new Date(procurement.weighed_at || Date.now()).toLocaleString(), officer: 'Weighbridge Operator'
       });
     }
     if (currentStage >= 5) {
       logs.push({
-        stage: 5, title: 'J-Form & Payout Disbursed', notes: `₹${finalPayout.toLocaleString('en-IN')} approved to farmer's registered bank account.`,
+        stage: 5, title: 'J-Form & Payout Disbursed', notes: `₹${finalPayout.toLocaleString('en-IN')} approved via Direct Benefit Transfer.`,
         timestamp: new Date(procurement.approved_at || Date.now()).toLocaleString(), officer: 'Mandi Manager'
       });
     }
@@ -143,7 +218,8 @@ export default function ProcurementTracker() {
     <div className="py-8 px-4 sm:px-6 max-w-5xl mx-auto font-sans">
       
       {/* Tracker Header */}
-      <div className="bg-gradient-to-r from-gray-900 to-slate-800 text-white p-6 sm:p-8 rounded-2xl shadow-lg mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-gray-900 to-slate-800 text-white p-6 sm:p-8 rounded-3xl shadow-xl mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+        
         {/* Subtle background icon */}
         <div className="absolute right-0 top-0 text-9xl opacity-5 pointer-events-none transform translate-x-4 -translate-y-4">
           🚛
@@ -152,7 +228,7 @@ export default function ProcurementTracker() {
         <div className="relative z-10">
           <div className="flex items-center gap-2 mb-2">
             <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest backdrop-blur-sm border border-white/10">
-              Live Tracker
+              Live Mandi Consignment
             </span>
             {isRefreshing && (
               <span className="flex items-center gap-1 text-[10px] text-emerald-300 font-bold ml-2">
@@ -160,16 +236,21 @@ export default function ProcurementTracker() {
               </span>
             )}
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Token: {procurement.token_id}</h1>
+          
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight font-mono text-emerald-300">
+            {procurement.token_id}
+          </h1>
+          
           <p className="text-slate-300 mt-2 text-sm font-medium">
-            Mandi: <span className="text-white font-bold">{procurement.centre_name}</span>
+            Mandi: <span className="text-white font-bold">{procurement.centre_name}</span> &bull; Farmer: <span className="text-white font-bold">{procurement.farmer_name}</span>
           </p>
+          
           <div className="mt-3 flex gap-4 text-xs font-bold text-slate-300">
             <button 
-              onClick={() => setProcurement(null)}
-              className="hover:text-white underline decoration-slate-500 cursor-pointer"
+              onClick={handleResetSearch}
+              className="hover:text-white underline decoration-slate-500 cursor-pointer flex items-center gap-1"
             >
-              ← Track Another Token
+              <span>🔍</span> Track Another Token
             </button>
           </div>
         </div>
@@ -187,7 +268,7 @@ export default function ProcurementTracker() {
       </div>
 
       {/* HORIZONTAL PROGRESS MILESTONES */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-10 mb-8 overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-md border border-gray-200 p-6 sm:p-10 mb-8 overflow-hidden">
         <div className="relative">
           {/* Connecting Line Base */}
           <div className="absolute top-6 left-[10%] right-[10%] h-1.5 bg-gray-100 rounded-full z-0"></div>
@@ -195,13 +276,7 @@ export default function ProcurementTracker() {
           {/* Active Progress Line */}
           <div 
             className="absolute top-6 left-[10%] h-1.5 bg-brand rounded-full z-0 transition-all duration-700 ease-in-out"
-            style={{ width: `${(Math.min(currentStage, 5) - 1) * 20}%` }} // 4 intervals between 5 steps = 25% each. Width based on stage. (Wait, 5 steps = 4 gaps. 25% each gap. So: 0, 25, 50, 75, 100)
-          ></div>
-
-          {/* Corrected Active Progress Line Logic */}
-          <div 
-            className="absolute top-6 left-[10%] h-1.5 bg-brand rounded-full z-0 transition-all duration-700 ease-in-out"
-            style={{ width: `${(Math.max(1, Math.min(currentStage, 5)) - 1) * 25}%` }}
+            style={{ width: `${(Math.max(1, Math.min(currentStage, 5)) - 1) * 20}%` }}
           ></div>
 
           {/* Nodes */}
@@ -245,19 +320,19 @@ export default function ProcurementTracker() {
 
       {/* FINAL PAYOUT HERO CARD (Only visible if Stage 5) */}
       {currentStage === 5 && (
-        <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-2xl shadow-sm border border-emerald-200 p-8 mb-8 text-center animate-fade-in-up">
+        <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-3xl shadow-sm border border-emerald-200 p-8 mb-8 text-center animate-fade-in-up">
           <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm text-3xl border-2 border-emerald-100">
             🎉
           </div>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-emerald-950 mb-2">
+          <h2 className="text-xl sm:text-2xl font-black text-emerald-950 mb-2">
             Payment Successfully Generated!
           </h2>
           <p className="text-sm text-emerald-700 max-w-lg mx-auto mb-6">
-            Your J-Form <strong>({procurement.j_form_number || 'JF-2026-98124'})</strong> has been issued. The final MSP payout has been initiated via Direct Benefit Transfer to your registered bank account.
+            Official J-Form <strong>({procurement.j_form_number || 'JF-2026-98124'})</strong> has been approved. The MSP payout has been initiated via Direct Benefit Transfer to the registered bank account.
           </p>
           
           <div className="inline-block bg-white px-8 py-4 rounded-2xl shadow-sm border border-emerald-100">
-            <span className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Final Payout Amount</span>
+            <span className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Final Disbursed Payout</span>
             <span className="block text-4xl font-black text-emerald-600">₹{finalPayout.toLocaleString('en-IN')}</span>
           </div>
         </div>
@@ -283,19 +358,19 @@ export default function ProcurementTracker() {
           <div className="space-y-3 text-xs">
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-500">Scheduled Date:</span>
-              <span className="font-bold text-gray-900">{procurement.slot_date}</span>
+              <span className="font-bold text-gray-900">{procurement.slot_date || 'Today'}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-500">Intake Shift:</span>
-              <span className="font-bold text-gray-900 text-right w-1/2 line-clamp-1">{procurement.slot_name}</span>
+              <span className="font-bold text-gray-900 text-right w-1/2 line-clamp-1">{procurement.slot_name || 'Slot 1: Morning'}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-500">Vehicle No:</span>
-              <span className="font-bold text-gray-900 font-mono">{currentStage >= 2 ? (procurement.vehicle_number || 'TRUCK-123') : '--'}</span>
+              <span className="font-bold text-gray-900 font-mono">{currentStage >= 2 ? (procurement.vehicle_number || 'HR-05-AB-4412') : '--'}</span>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-gray-500">Security Gate Pass:</span>
-              <span className="font-bold text-gray-900 font-mono">{currentStage >= 2 ? (procurement.gate_pass || 'GP-8831') : '--'}</span>
+              <span className="font-bold text-gray-900 font-mono">{currentStage >= 2 ? (procurement.gate_pass || 'GP-2026-8831') : '--'}</span>
             </div>
           </div>
         </div>
@@ -364,17 +439,17 @@ export default function ProcurementTracker() {
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-500">Standard Gunny Bags:</span>
-              <span className="font-bold text-gray-900">{currentStage >= 4 ? `${procurement?.gunny_bags || 90} Bags (50kg)` : '--'}</span>
+              <span className="font-bold text-gray-900">{currentStage >= 4 ? `${procurement?.gunny_bags || Math.round(netQuintals * 2)} Bags (50kg)` : '--'}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-500">Gross / Tare Weight:</span>
               <span className="font-bold text-gray-900 font-mono">
-                {currentStage >= 4 ? '7,520 kg / 3,000 kg' : '--'}
+                {currentStage >= 4 ? `${Math.round((netQuintals * 100) + 3000).toLocaleString('en-IN')} kg / 3,000 kg` : '--'}
               </span>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-gray-500">Weighbridge Slip No:</span>
-              <span className="font-bold text-gray-900 font-mono">{currentStage >= 4 ? 'WB-2026-9912' : '--'}</span>
+              <span className="font-bold text-gray-900 font-mono">{currentStage >= 4 ? (procurement.weighbridge_slip || 'WB-2026-9912') : '--'}</span>
             </div>
           </div>
         </div>
@@ -382,7 +457,7 @@ export default function ProcurementTracker() {
       </div>
 
       {/* Official Audit Trail & Officer Logs */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-8">
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 mb-8">
         <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
           <span>📜</span> Official Audit Trail & Officer Logs
         </h3>

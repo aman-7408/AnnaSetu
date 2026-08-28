@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const CROPS = [
   { name: 'Wheat (Sharbati A-Grade)', code: 'WHT', msp: 2275, unit: '₹/Quintal' },
@@ -100,6 +101,7 @@ const getStoredPasses = () => {
 };
 
 export default function SlotBooking() {
+  const navigate = useNavigate();
   // Timezone-safe local dates to enforce a rolling 7-day booking window
   const tzOffset = new Date().getTimezoneOffset() * 60000;
   const nowMs = Date.now() - tzOffset;
@@ -562,13 +564,22 @@ export default function SlotBooking() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => setActivePassModal(pass)}
-                    className="mt-4 w-full bg-emerald-800 text-white py-2 rounded-lg text-xs font-bold hover:bg-emerald-900 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <span>👁️</span>
-                    <span>View Official Gate Pass</span>
-                  </button>
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => setActivePassModal(pass)}
+                      className="flex-1 bg-emerald-800 text-white py-2 rounded-lg text-xs font-bold hover:bg-emerald-900 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <span>👁️</span>
+                      <span>View Pass</span>
+                    </button>
+                    <button
+                      onClick={() => navigate(`/tracker?token=${pass.token_id}`)}
+                      className="flex-1 bg-brand text-white py-2 rounded-lg text-xs font-bold hover:bg-brand-dark transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <span>🛰️</span>
+                      <span>Track Live</span>
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1332,13 +1343,25 @@ export default function SlotBooking() {
                 ✕ Close
               </button>
 
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    const token = activePassModal.token_id;
+                    setActivePassModal(null);
+                    navigate(`/tracker?token=${token}`);
+                  }}
+                  className="bg-brand text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-brand-dark transition-colors shadow flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>🛰️</span>
+                  <span>Track Live Consignment</span>
+                </button>
+
                 <button
                   onClick={handlePrintPass}
-                  className="bg-emerald-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-emerald-900 transition-colors shadow flex items-center gap-2 cursor-pointer"
+                  className="bg-emerald-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-emerald-900 transition-colors shadow flex items-center gap-2 cursor-pointer"
                 >
                   <span>🖨️</span>
-                  <span>Print / Save PDF Gate Pass</span>
+                  <span>Print PDF</span>
                 </button>
 
                 <button
