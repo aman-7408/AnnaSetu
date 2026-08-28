@@ -53,12 +53,31 @@ router.post('/create', async (req, res) => {
       return res.status(400).json({ error: 'Please enter a valid grain weight in Quintals (greater than 0).' });
     }
 
-    const bookingDate = date || new Date().toISOString().split('T')[0];
+    const bookingDate = date || req.body.booking_date || new Date().toISOString().split('T')[0];
 
-    // 1. Verify Farmer in Module 1 Registry
+    // Server-side Rolling 7-day Booking Window Enforcement
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    const maxDate = new Date(todayDate);
+    maxDate.setDate(maxDate.getDate() + 7);
+    const requestedDate = new Date(bookingDate);
+    requestedDate.setHours(0, 0, 0, 0);
+
+    if (requestedDate < todayDate || requestedDate > maxDate) {
+      return res.status(400).json({
+        error: 'Safety Guard: Bookings are restricted to a rolling 7-day window from today.'
+      });
+    }
+
+    // 1. Verify Farmer in Module 1 Registry (Strict Mode)
     let farmer = await Farmer.findOne({ aadhar_number: farmer_aadhar.trim() });
-    let resolvedFarmerName = farmer ? farmer.name : (farmer_name || 'Registered Farmer');
-    let resolvedFarmerPhone = farmer ? farmer.phone : (farmer_phone || '+91 98765 43210');
+    if (!farmer) {
+      return res.status(404).json({
+        error: 'Farmer Aadhaar is not registered in AnnaSetu database. Please complete registration first.'
+      });
+    }
+    let resolvedFarmerName = farmer.name;
+    let resolvedFarmerPhone = farmer.phone;
 
     // 2. Verify Centre in Module 4 Mandi Registry
     const centre = await Centre.findById(centre_id);
