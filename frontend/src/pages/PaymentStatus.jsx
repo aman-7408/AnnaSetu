@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api/payments';
+const API_BASE = (import.meta.env.VITE_API_URL || '') + '/api/payments';
 
 export default function PaymentStatus() {
   const [searchParams] = useSearchParams();
@@ -53,6 +53,7 @@ export default function PaymentStatus() {
           {/* Close Button */}
           <button 
             onClick={() => setSelectedReceipt(null)}
+            aria-label="Close Receipt Modal"
             className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1 cursor-pointer"
           >
             ✕
@@ -320,7 +321,49 @@ export default function PaymentStatus() {
                 <h3 className="font-extrabold text-gray-900 text-base">All Disbursed DBT Transactions</h3>
                 <span className="text-xs text-gray-500 font-medium">{payments.length} record(s)</span>
               </div>
-              <div className="overflow-x-auto">
+
+              {/* MOBILE STACKED CARDS VIEW */}
+              <div className="block md:hidden divide-y divide-gray-100">
+                {payments.map((p) => (
+                  <div key={p.payment_id} className="p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="font-extrabold text-gray-900 text-sm block">{p.token_id}</span>
+                        <span className="text-3xs text-gray-400 font-mono">J-Form: {p.j_form_number}</span>
+                      </div>
+                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-md font-extrabold text-3xs uppercase">
+                        {p.payment_status}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 text-xs">
+                      <div>
+                        <span className="text-gray-500 block text-3xs uppercase font-bold">{p.crop_type}</span>
+                        <span className="font-bold text-gray-900">{p.net_weight_quintals} Quintals</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-gray-400 block text-3xs uppercase font-bold">Gross MSP</span>
+                        <span className="text-base font-black text-emerald-800">₹{p.gross_amount?.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-1">
+                      <div className="text-3xs text-gray-500 font-mono">
+                        A/C •••• {p.bank_account_number?.slice(-4)}
+                      </div>
+                      <button
+                        onClick={() => setSelectedReceipt(p)}
+                        className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>📄</span> View Voucher
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* DESKTOP TABLE VIEW */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-50 text-gray-500 uppercase font-bold text-3xs border-b border-gray-200">
                     <tr>

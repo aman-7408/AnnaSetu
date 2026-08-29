@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_BASE = import.meta.env.VITE_API_URL || "";
 import React, { useState, useEffect } from 'react';
 
 export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
@@ -15,9 +15,26 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
   const [isAdvancingStage, setIsAdvancingStage] = useState(false);
   
   // Custom Shift Quotas Editor State
+  const tzOffset = new Date().getTimezoneOffset() * 60000;
+  const nowMs = Date.now() - tzOffset;
+  const todayLocal = new Date(nowMs).toISOString().split('T')[0];
+  const [shiftDate, setShiftDate] = useState(todayLocal);
   const [isEditingShifts, setIsEditingShifts] = useState(false);
   const [shiftInputs, setShiftInputs] = useState({});
   const [isSavingShifts, setIsSavingShifts] = useState(false);
+
+  // 7-Day Rolling Procurement Window Options
+  const shiftDateOptions = Array.from({ length: 8 }, (_, i) => {
+    const d = new Date(nowMs + i * 24 * 60 * 60 * 1000);
+    const dateStr = d.toISOString().split('T')[0];
+    const label = i === 0 ? `Today (${dateStr})` : i === 1 ? `Tomorrow (${dateStr})` : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ` (${dateStr})`;
+    return { dateStr, label };
+  });
+
+  // Token Sections & Selection State
+  const [tokenTab, setTokenTab] = useState('active'); // 'active' | 'approved'
+  const [selectedTokenId, setSelectedTokenId] = useState(null);
+  const [selectedVoucher, setSelectedVoucher] = useState(null);
 
   // 1. Fetch Centres & Procurements from MongoDB
   const fetchAllData = async (showSyncIndicator = false) => {
@@ -47,15 +64,14 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     }
   };
 
-  // 2. Fetch Slots for a centre
-  const fetchSlots = async (centreId) => {
+  // 2. Fetch Slots for a centre (with dynamic date support)
+  const fetchSlots = async (centreId, targetDate = shiftDate) => {
     try {
-      const res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/slots`);
+      const res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/slots?date=${targetDate}`);
       const data = await res.json();
       if (data.success) {
         setSlotsData(prev => ({ ...prev, [centreId]: data.slots }));
         
-        // Populate default edit values
         const initialInputs = {};
         data.slots.forEach(slot => {
           initialInputs[slot.slot_code] = slot.max_capacity_quintals;
@@ -74,7 +90,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     } else {
       setExpandedCentreId(centreId);
       setIsEditingShifts(false);
-      fetchSlots(centreId);
+      fetchSlots(centreId, shiftDate);
     }
   };
 
@@ -134,7 +150,6 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       max_capacity_quintals: Number(shiftInputs[s.slot_code] || 0)
     }));
 
-    // Math validation
     const totalSum = updatedSlotsPayload.reduce((acc, s) => acc + s.max_capacity_quintals, 0);
     const requiredDaily = target.daily_capacity_quintals;
 
@@ -143,7 +158,6 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       return;
     }
 
-    // Floor checks
     for (const slot of targetSlots) {
       const newCap = Number(shiftInputs[slot.slot_code] || 0);
       const bookedFloor = slot.booked_capacity_quintals || 0;
@@ -158,13 +172,13 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       const res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/slots`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slots: updatedSlotsPayload })
+        body: JSON.stringify({ slots: updatedSlotsPayload, date: shiftDate })
       });
       const data = await res.json();
       if (data.success) {
         showFeedback(`✓ Successfully balanced 3-hour shift quotas to match ${requiredDaily.toLocaleString()} Q!`);
         setIsEditingShifts(false);
-        fetchSlots(centreId);
+        fetchSlots(centreId, shiftDate);
       } else {
         showError(data.error || 'Failed to update shift quotas.');
       }
@@ -199,7 +213,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
   };
 
   // 6. Manager Action: Advance Procurement Stage (1 ➔ 2 ➔ 3 ➔ 4 ➔ 5)
-  const handleAdvanceStage = async (tokenId, nextStage) => {
+  const handleAdvanceStage = async (tokenId, nextStage, currentProc) => {
     setIsAdvancingStage(true);
     try {
       let stageDetails = {};
@@ -208,8 +222,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       } else if (nextStage === 3) {
         stageDetails = { moisture_percent: 11.6, purity_percent: 99.2, grade: 'Grade A FAQ' };
       } else if (nextStage === 4) {
-        // Dynamically calculate based on the actual farmer's booked weight
-        const w = activeDemoProcurement.estimated_weight_quintals || 45.20;
+        const w = currentProc?.estimated_weight_quintals || 45.20;
         stageDetails = { net_weight_quintals: w, gunny_bags: Math.round(w * 2) };
       } else if (nextStage === 5) {
         stageDetails = { msp_rate: 2275, j_form_number: 'JF-2026-98124' };
@@ -251,7 +264,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
   const showFeedback = (msg) => {
     setActionMessage(msg);
     setErrorMessage('');
-    setTimeout(() => setActionMessage(''), 4000);
+    setTimeout(() => setActionMessage(''), 4500);
   };
 
   const showError = (msg) => {
@@ -261,61 +274,62 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
   };
 
   useEffect(() => {
-    if (userSession) {
+    fetchAllData();
+    const interval = setInterval(() => {
       fetchAllData(false);
-      const interval = setInterval(() => {
-        fetchAllData(false);
-      }, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [userSession]);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
+  // Filter Tokens strictly for the logged-in Mandi Manager's assigned facility
+  const assignedFacilityName = userSession?.centreName;
+  const facilityProcurements = procurements.filter(p => 
+    !assignedFacilityName || p.centre_name === assignedFacilityName
+  );
+
+  // Filter Tokens into 2 Distinct Sections for this Facility
+  const activeTokens = facilityProcurements.filter(p => p.current_stage < 5);
+  const approvedTokens = facilityProcurements.filter(p => p.current_stage === 5);
+
+  // Active Token being processed (strictly real active tokens belonging to this facility)
+  const currentActiveProcurement = facilityProcurements.find(p => p.token_id === selectedTokenId && p.current_stage < 5) || activeTokens[0] || null;
+
+  // Unauthorized Barrier
   if (!userSession) {
     return (
-      <div className="py-20 px-4 max-w-xl mx-auto text-center animate-fade-in-up">
-        <div className="bg-white rounded-2xl shadow-xl p-8 border-t-4 border-red-500">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-extrabold text-gray-900 mb-2">Access Restricted</h2>
-          <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-            This command center is reserved for authorized Mandi Managers & In-Charges.
-          </p>
-          <button 
-            onClick={onOpenLogin}
-            className="bg-emerald-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-emerald-700 transition-colors shadow-md flex items-center justify-center gap-2 mx-auto cursor-pointer"
-          >
-            <span>🔒</span> Open Manager Login
-          </button>
+      <div className="py-16 px-4 max-w-md mx-auto text-center space-y-6 animate-fade-in">
+        <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-3xl shadow-inner border-2 border-emerald-300">
+          🔒
         </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black text-gray-900">Official Access Restricted</h2>
+          <p className="text-xs text-gray-600 font-medium">
+            This terminal is strictly reserved for authorized Mandi Managers & Procurement Officers.
+          </p>
+        </div>
+        <button
+          onClick={onOpenLogin}
+          className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3.5 px-6 rounded-xl shadow-lg transition-transform active:scale-95 text-sm cursor-pointer"
+        >
+          🔑 Open Manager Login Terminal
+        </button>
       </div>
     );
   }
 
+  // Find manager centre
   const managerCentre = centres.find(
     c => c.name.toLowerCase().includes(userSession.state?.toLowerCase() || '') || c.name === userSession.centreName
   ) || centres[0];
 
   const centreSlots = managerCentre ? (slotsData[managerCentre._id] || []) : [];
 
-  const activeDemoProcurement = procurements[0] || {
-    token_id: 'AS-2026-WHT-7821',
-    farmer_name: 'Aman Kumar',
-    farmer_phone: '+91 98765 43210',
-    crop_type: 'Wheat (Sharbati A-Grade)',
-    centre_name: userSession.centreName || 'Meerut Central Agro Warehouse',
-    current_stage: 1
-  };
-
-  // Live calculation of shift quota allocation sum
+  // Calculation of shift quotas
   const currentTotalAllocated = Object.values(shiftInputs).reduce((acc, val) => acc + (Number(val) || 0), 0);
   const requiredDailyQuota = managerCentre?.daily_capacity_quintals || 1200;
   const allocationDiff = currentTotalAllocated - requiredDailyQuota;
   const isShiftQuotaBalanced = allocationDiff === 0;
 
-  // Check if any shift is set below currently booked grain
   const floorViolationSlot = centreSlots.find(slot => {
     const val = Number(shiftInputs[slot.slot_code] !== undefined ? shiftInputs[slot.slot_code] : slot.max_capacity_quintals);
     return val < (slot.booked_capacity_quintals || 0);
@@ -323,8 +337,101 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
   const hasFloorViolation = !!floorViolationSlot;
   const isShiftQuotaValid = isShiftQuotaBalanced && !hasFloorViolation;
 
+  // Manager Voucher Modal
+  const renderVoucherModal = () => {
+    if (!selectedVoucher) return null;
+
+    const gross = selectedVoucher.gross_payout || 102830;
+    const weight = selectedVoucher.net_weight_quintals || 45.20;
+    const rate = selectedVoucher.msp_rate || 2275;
+    const bags = selectedVoucher.gunny_bags || Math.round(weight * 2);
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-emerald-600 relative">
+          <button 
+            onClick={() => setSelectedVoucher(null)}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1 cursor-pointer"
+          >
+            ✕
+          </button>
+
+          <div className="p-6 bg-emerald-50/60 border-b border-gray-100 flex items-center gap-4">
+            <div className="w-14 h-14 bg-white rounded-full border-2 border-emerald-400 flex items-center justify-center shadow-md p-1 shrink-0">
+              <img src="/logo.png" alt="AnnaSetu Emblem" className="w-full h-full object-cover rounded-full" />
+            </div>
+            <div>
+              <span className="text-3xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                Mandi Manager Treasury Record
+              </span>
+              <h2 className="text-xl font-black text-gray-900 mt-1">Official J-Form Settlement Voucher</h2>
+              <p className="text-xs text-gray-500 font-mono">Token: {selectedVoucher.token_id}</p>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-4 text-xs text-gray-800">
+            <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3.5 rounded-xl border border-gray-200">
+              <div>
+                <span className="text-gray-400 font-semibold block text-3xs uppercase">Beneficiary Kisan</span>
+                <span className="font-extrabold text-gray-900 text-sm">{selectedVoucher.farmer_name}</span>
+                <span className="text-gray-500 block text-3xs font-mono mt-0.5">{selectedVoucher.farmer_phone}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 font-semibold block text-3xs uppercase">J-Form Reference</span>
+                <span className="font-extrabold text-emerald-800 text-sm font-mono">{selectedVoucher.j_form_number || 'JF-2026-98124'}</span>
+                <span className="text-gray-500 block text-3xs font-mono mt-0.5">Gate Pass: {selectedVoucher.gate_pass || 'GP-2026-8831'}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                <span className="text-3xs text-emerald-800 font-bold uppercase block">Net Weight</span>
+                <span className="text-base font-black text-emerald-950">{weight} Qtl</span>
+              </div>
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <span className="text-3xs text-blue-800 font-bold uppercase block">Govt MSP Rate</span>
+                <span className="text-base font-black text-blue-950">₹{rate} /Q</span>
+              </div>
+              <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                <span className="text-3xs text-purple-800 font-bold uppercase block">Gunny Bags</span>
+                <span className="text-base font-black text-purple-950">{bags} Bags</span>
+              </div>
+            </div>
+
+            <div className="bg-emerald-600 text-white p-4 rounded-xl text-center shadow-md">
+              <span className="text-3xs font-extrabold uppercase tracking-widest text-emerald-200 block mb-1">
+                Approved Gross DBT Payout
+              </span>
+              <span className="text-3xl font-black">₹{gross.toLocaleString('en-IN')}</span>
+              <div className="mt-2 text-2xs font-bold text-emerald-100 flex items-center justify-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+                <span>STATUS: J-FORM APPROVED (DISBURSED VIA PFMS)</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button 
+                onClick={() => setSelectedVoucher(null)}
+                className="w-1/3 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-lg hover:bg-gray-200 transition-colors text-xs cursor-pointer"
+              >
+                Close
+              </button>
+              <button 
+                onClick={() => window.print()}
+                className="w-2/3 bg-emerald-600 text-white font-bold py-2.5 rounded-lg hover:bg-emerald-700 transition-colors shadow-md text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>🖨️</span> Print Voucher Copy
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="py-8 px-4 max-w-6xl mx-auto animate-fade-in-up space-y-6">
+      {renderVoucherModal()}
       
       {/* 1. TOP MANAGER HEADER BAR */}
       <div className="bg-white rounded-2xl shadow-md p-5 md:p-6 border-l-4 border-emerald-600 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -351,7 +458,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 shadow-inner">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Auto-Sync: <strong className="text-emerald-700">3s</strong></span>
+            <span>Auto-Sync: <strong className="text-emerald-700">5s</strong></span>
           </div>
 
           <button 
@@ -387,273 +494,407 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
         </div>
       )}
 
-      {/* 2. THE MANAGER'S LIVE PHYSICAL INTAKE & 5-STAGE APPROVAL STATION */}
-      <div className="bg-gradient-to-br from-emerald-900 to-teal-950 text-white rounded-3xl p-6 md:p-8 shadow-xl border border-emerald-800 relative overflow-hidden">
-        <div className="absolute right-0 top-0 opacity-10 text-9xl pointer-events-none transform translate-x-6 -translate-y-6">
-          ⚖️
-        </div>
-
-        <div className="relative z-10 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-800/80 pb-4">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                Physical Mandi Gate Station
-              </span>
-              <h3 className="text-xl md:text-2xl font-extrabold text-white mt-0.5 flex items-center gap-2">
-                <span>🚛</span> Truck Arrival & 5-Stage Station Approvals
-              </h3>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-emerald-300 bg-emerald-800/60 border border-emerald-600 px-3 py-1 rounded-full font-mono font-bold">
-                Token: {activeDemoProcurement.token_id}
-              </span>
-            </div>
+      {/* 2. DEDICATED TOKEN MANAGEMENT TABS & WORKFLOW */}
+      <div className="bg-white rounded-3xl p-6 md:p-8 shadow-md border border-gray-200 space-y-6">
+        
+        {/* Section Header & Tab Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+          <div>
+            <span className="text-3xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md">
+              Procurement Token Control Center
+            </span>
+            <h3 className="text-2xl font-black text-gray-900 mt-1">Mandi Consignment Registry</h3>
           </div>
 
-          {/* Active Farmer Delivery Info */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-emerald-950/60 p-4 rounded-2xl border border-emerald-800/60 text-xs">
-            <div>
-              <p className="text-emerald-400 font-bold uppercase text-[10px]">Farmer Name</p>
-              <p className="font-extrabold text-white text-sm">{activeDemoProcurement.farmer_name}</p>
-            </div>
-            <div>
-              <p className="text-emerald-400 font-bold uppercase text-[10px]">Crop Allotment</p>
-              <p className="font-bold text-white">{activeDemoProcurement.crop_type}</p>
-            </div>
-            <div>
-              <p className="text-emerald-400 font-bold uppercase text-[10px]">Arrival Mandi</p>
-              <p className="font-bold text-white">{activeDemoProcurement.centre_name}</p>
-            </div>
-            <div>
-              <p className="text-emerald-400 font-bold uppercase text-[10px]">Current Live Stage</p>
-              <p className="font-extrabold text-yellow-300 text-sm">
-                Stage {activeDemoProcurement.current_stage} / 5
-              </p>
-            </div>
-          </div>
+          {/* 2-Section Tab Switcher */}
+          <div className="flex p-1.5 bg-gray-100 rounded-2xl shrink-0 gap-1">
+            <button
+              onClick={() => setTokenTab('active')}
+              className={`px-5 py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+                tokenTab === 'active'
+                  ? 'bg-emerald-700 text-white shadow-md scale-105'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
+              }`}
+            >
+              <span>🚛</span>
+              <span>1. Active Tokens ({activeTokens.length})</span>
+            </button>
 
-          {/* Interactive 5-Stage Step Approval Station */}
-          <div className="space-y-4">
-            <p className="text-xs font-bold text-emerald-200 uppercase tracking-wider">
-              Click to approve physical intake stations (Live synchronization across all portals):
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              
-              {/* STAGE 1: Token Active */}
-              <div className={`p-4 rounded-2xl border transition-all ${
-                activeDemoProcurement.current_stage >= 1 
-                  ? 'bg-emerald-800/80 border-emerald-400 text-white shadow-md' 
-                  : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
-              }`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold">Stage 1</span>
-                  <span>{activeDemoProcurement.current_stage >= 1 ? '✅' : '⏳'}</span>
-                </div>
-                <h5 className="font-extrabold text-xs">Token Active</h5>
-                <p className="text-[10px] text-emerald-200 mt-1">Booked by Anushrita</p>
-              </div>
-
-              {/* STAGE 2: Gate Check-in */}
-              <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
-                activeDemoProcurement.current_stage >= 2 
-                  ? 'bg-emerald-800/80 border-emerald-400 text-white shadow-md' 
-                  : activeDemoProcurement.current_stage === 1
-                    ? 'bg-emerald-950/90 border-yellow-400/80 text-white ring-2 ring-yellow-400/30'
-                    : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
-              }`}>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold">Stage 2</span>
-                    <span>{activeDemoProcurement.current_stage >= 2 ? '✅' : '🚛'}</span>
-                  </div>
-                  <h5 className="font-extrabold text-xs">Gate Check-in</h5>
-                  <p className="text-[10px] text-emerald-200 mt-0.5">HR-05-AB-4412</p>
-                </div>
-
-                {activeDemoProcurement.current_stage === 1 && (
-                  <button 
-                    onClick={() => handleAdvanceStage(activeDemoProcurement.token_id, 2)}
-                    disabled={isAdvancingStage}
-                    className="mt-3 w-full bg-yellow-400 hover:bg-yellow-300 text-gray-950 text-[11px] font-extrabold py-1.5 px-2 rounded-lg transition-all shadow active:scale-95 cursor-pointer"
-                  >
-                    Approve Gate-In
-                  </button>
-                )}
-              </div>
-
-              {/* STAGE 3: Quality Assaying */}
-              <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
-                activeDemoProcurement.current_stage >= 3 
-                  ? 'bg-emerald-800/80 border-emerald-400 text-white shadow-md' 
-                  : activeDemoProcurement.current_stage === 2
-                    ? 'bg-emerald-950/90 border-yellow-400/80 text-white ring-2 ring-yellow-400/30'
-                    : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
-              }`}>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold">Stage 3</span>
-                    <span>{activeDemoProcurement.current_stage >= 3 ? '✅' : '🔬'}</span>
-                  </div>
-                  <h5 className="font-extrabold text-xs">Quality Assaying</h5>
-                  <p className="text-[10px] text-emerald-200 mt-0.5">Moisture 11.6% • Grade A</p>
-                </div>
-
-                {activeDemoProcurement.current_stage === 2 && (
-                  <button 
-                    onClick={() => handleAdvanceStage(activeDemoProcurement.token_id, 3)}
-                    disabled={isAdvancingStage}
-                    className="mt-3 w-full bg-yellow-400 hover:bg-yellow-300 text-gray-950 text-[11px] font-extrabold py-1.5 px-2 rounded-lg transition-all shadow active:scale-95 cursor-pointer"
-                  >
-                    Approve Quality
-                  </button>
-                )}
-              </div>
-
-              {/* STAGE 4: Weighbridge & Bags */}
-              <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
-                activeDemoProcurement.current_stage >= 4 
-                  ? 'bg-emerald-800/80 border-emerald-400 text-white shadow-md' 
-                  : activeDemoProcurement.current_stage === 3
-                    ? 'bg-emerald-950/90 border-yellow-400/80 text-white ring-2 ring-yellow-400/30'
-                    : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
-              }`}>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold">Stage 4</span>
-                    <span>{activeDemoProcurement.current_stage >= 4 ? '✅' : '⚖️'}</span>
-                  </div>
-                  <h5 className="font-extrabold text-xs">Weighbridge</h5>
-                  <p className="text-[10px] text-emerald-200 mt-0.5">{activeDemoProcurement.net_weight_quintals || activeDemoProcurement.estimated_weight_quintals || 45.20} Qtl • {activeDemoProcurement.gunny_bags || Math.round((activeDemoProcurement.estimated_weight_quintals || 45.20) * 2)} Bags</p>
-                </div>
-
-                {activeDemoProcurement.current_stage === 3 && (
-                  <button 
-                    onClick={() => handleAdvanceStage(activeDemoProcurement.token_id, 4)}
-                    disabled={isAdvancingStage}
-                    className="mt-3 w-full bg-yellow-400 hover:bg-yellow-300 text-gray-950 text-[11px] font-extrabold py-1.5 px-2 rounded-lg transition-all shadow active:scale-95 cursor-pointer"
-                  >
-                    Approve Weight
-                  </button>
-                )}
-              </div>
-
-              {/* STAGE 5: Payment Approval */}
-              <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
-                activeDemoProcurement.current_stage >= 5 
-                  ? 'bg-gradient-to-br from-emerald-600 to-teal-500 border-white text-white shadow-lg' 
-                  : activeDemoProcurement.current_stage === 4
-                    ? 'bg-emerald-950/90 border-yellow-400/80 text-white ring-2 ring-yellow-400/30'
-                    : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
-              }`}>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold">Stage 5</span>
-                    <span>{activeDemoProcurement.current_stage >= 5 ? '💰' : '📄'}</span>
-                  </div>
-                  <h5 className="font-extrabold text-xs">Approved Payout</h5>
-                  <p className="text-[10px] text-emerald-200 mt-0.5">₹{(activeDemoProcurement.gross_payout || Math.round((activeDemoProcurement.net_weight_quintals || activeDemoProcurement.estimated_weight_quintals || 45.20) * 2275)).toLocaleString('en-IN')} ({activeDemoProcurement.j_form_number || 'JF-2026-98124'})</p>
-                </div>
-
-                {activeDemoProcurement.current_stage === 4 && (
-                  <button 
-                    onClick={() => handleAdvanceStage(activeDemoProcurement.token_id, 5)}
-                    disabled={isAdvancingStage}
-                    className="mt-3 w-full bg-yellow-400 hover:bg-yellow-300 text-gray-950 text-[11px] font-extrabold py-1.5 px-2 rounded-lg transition-all shadow active:scale-95 cursor-pointer"
-                  >
-                    Generate J-Form
-                  </button>
-                )}
-
-                {activeDemoProcurement.current_stage === 5 && (
-                  <span className="mt-2 text-[10px] font-extrabold bg-white/20 px-2 py-1 rounded text-center">
-                    ✓ J-Form Approved (DBT Disbursed)
-                  </span>
-                )}
-              </div>
-
-            </div>
+            <button
+              onClick={() => setTokenTab('approved')}
+              className={`px-5 py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+                tokenTab === 'approved'
+                  ? 'bg-emerald-700 text-white shadow-md scale-105'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
+              }`}
+            >
+              <span>💳</span>
+              <span>2. Tokens Approved for Payments ({approvedTokens.length})</span>
+            </button>
           </div>
         </div>
+
+        {/* SECTION 1: ACTIVE TOKENS PIPELINE */}
+        {tokenTab === 'active' && (
+          <div className="space-y-6 animate-fade-in">
+            
+            {/* Active Tokens List / Selector */}
+            {activeTokens.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  Select a token from the queue to process through intake stations:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {activeTokens.map((p) => {
+                    const isSelected = p.token_id === currentActiveProcurement.token_id;
+                    return (
+                      <div
+                        key={p.token_id}
+                        onClick={() => setSelectedTokenId(p.token_id)}
+                        className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-emerald-50/70 border-emerald-600 shadow-md ring-2 ring-emerald-100'
+                            : 'bg-gray-50 border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/30'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <span className="font-mono font-black text-emerald-900 text-xs">{p.token_id}</span>
+                          <span className="bg-amber-100 text-amber-900 text-3xs font-extrabold px-2 py-0.5 rounded-full uppercase">
+                            Stage {p.current_stage} / 5
+                          </span>
+                        </div>
+                        <p className="font-extrabold text-gray-900 text-sm mt-1">{p.farmer_name}</p>
+                        <p className="text-3xs text-gray-500 font-medium">{p.crop_type} • {p.estimated_weight_quintals || 45.2} Qtl</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-3">
+                <span className="text-4xl block">✨</span>
+                <h4 className="font-extrabold text-emerald-950 text-base">Zero Active Tokens in Queue</h4>
+                <p className="text-xs text-emerald-800 max-w-md mx-auto">
+                  All farmer arrivals for this Mandi have been processed or moved to the payment approved section.
+                </p>
+                {approvedTokens.length > 0 && (
+                  <button
+                    onClick={() => setTokenTab('approved')}
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-sm cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <span>💳</span>
+                    <span>View Approved Settlements ({approvedTokens.length})</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* 5-STAGE PHYSICAL INTAKE CONSOLE (Rendered strictly when an active token exists) */}
+            {activeTokens.length > 0 && currentActiveProcurement && (
+              <div className="bg-gradient-to-br from-emerald-900 to-teal-950 text-white rounded-3xl p-6 md:p-8 shadow-xl border border-emerald-800 relative overflow-hidden">
+                <div className="relative z-10 space-y-6">
+                  
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-800/80 pb-4">
+                    <div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                        Physical Mandi Gate Station
+                      </span>
+                      <h3 className="text-xl md:text-2xl font-extrabold text-white mt-0.5 flex items-center gap-2">
+                        <span>🚛</span> Active Station Approvals
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-emerald-300 bg-emerald-800/60 border border-emerald-600 px-3 py-1 rounded-full font-mono font-bold">
+                        Processing: {currentActiveProcurement.token_id}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Active Farmer Delivery Info */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-emerald-950/60 p-4 rounded-2xl border border-emerald-800/60 text-xs">
+                    <div>
+                      <p className="text-emerald-400 font-bold uppercase text-3xs">Farmer Name</p>
+                      <p className="font-extrabold text-white text-sm">{currentActiveProcurement.farmer_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-emerald-400 font-bold uppercase text-3xs">Crop Allotment</p>
+                      <p className="font-bold text-white">{currentActiveProcurement.crop_type}</p>
+                    </div>
+                    <div>
+                      <p className="text-emerald-400 font-bold uppercase text-3xs">Arrival Mandi</p>
+                      <p className="font-bold text-white">{currentActiveProcurement.centre_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-emerald-400 font-bold uppercase text-3xs">Current Live Stage</p>
+                      <p className="font-extrabold text-yellow-300 text-sm">
+                        Stage {currentActiveProcurement.current_stage} / 5
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Interactive 5-Stage Step Approval Station */}
+                  <div className="space-y-4">
+                    <p className="text-xs font-bold text-emerald-200 uppercase tracking-wider">
+                      Click to advance physical intake stations (Triggers live SMS & Portal sync):
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                      
+                      {/* STAGE 1: Token Active */}
+                      <div className={`p-4 rounded-2xl border transition-all ${
+                        currentActiveProcurement.current_stage >= 1 
+                          ? 'bg-emerald-800/80 border-emerald-400 text-white shadow-md' 
+                          : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-2xs font-extrabold uppercase tracking-wider text-emerald-300">Station 1</span>
+                          <span className="text-xs">✓</span>
+                        </div>
+                        <h4 className="font-bold text-sm">Digital Gate Pass</h4>
+                        <p className="text-3xs text-emerald-200/80 mt-1">Token Generated</p>
+                      </div>
+
+                      {/* STAGE 2: Gate Security Entry */}
+                      <div className={`p-4 rounded-2xl border transition-all ${
+                        currentActiveProcurement.current_stage >= 2 
+                          ? 'bg-emerald-800/80 border-emerald-400 text-white shadow-md' 
+                          : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-2xs font-extrabold uppercase tracking-wider text-emerald-300">Station 2</span>
+                          {currentActiveProcurement.current_stage >= 2 && <span className="text-xs">✓</span>}
+                        </div>
+                        <h4 className="font-bold text-sm">Gate-In Verified</h4>
+                        <p className="text-3xs text-emerald-200/80 mt-1">Verified Gate Pass</p>
+
+                        {currentActiveProcurement.current_stage === 1 && (
+                          <button 
+                            onClick={() => handleAdvanceStage(currentActiveProcurement.token_id, 2, currentActiveProcurement)}
+                            disabled={isAdvancingStage}
+                            className="mt-3 w-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-extrabold py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer"
+                          >
+                            {isAdvancingStage ? '...' : '▶ Approve Gate In'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* STAGE 3: Lab Moisture & Quality */}
+                      <div className={`p-4 rounded-2xl border transition-all ${
+                        currentActiveProcurement.current_stage >= 3 
+                          ? 'bg-emerald-800/80 border-emerald-400 text-white shadow-md' 
+                          : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-2xs font-extrabold uppercase tracking-wider text-emerald-300">Station 3</span>
+                          {currentActiveProcurement.current_stage >= 3 && <span className="text-xs">✓</span>}
+                        </div>
+                        <h4 className="font-bold text-sm">Quality Assaying</h4>
+                        <p className="text-3xs text-emerald-200/80 mt-1">11.6% Moisture • FAQ Grade</p>
+
+                        {currentActiveProcurement.current_stage === 2 && (
+                          <button 
+                            onClick={() => handleAdvanceStage(currentActiveProcurement.token_id, 3, currentActiveProcurement)}
+                            disabled={isAdvancingStage}
+                            className="mt-3 w-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-extrabold py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer"
+                          >
+                            {isAdvancingStage ? '...' : '▶ Pass Quality Lab'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* STAGE 4: Weighbridge Net Weight */}
+                      <div className={`p-4 rounded-2xl border transition-all ${
+                        currentActiveProcurement.current_stage >= 4 
+                          ? 'bg-emerald-800/80 border-emerald-400 text-white shadow-md' 
+                          : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-2xs font-extrabold uppercase tracking-wider text-emerald-300">Station 4</span>
+                          {currentActiveProcurement.current_stage >= 4 && <span className="text-xs">✓</span>}
+                        </div>
+                        <h4 className="font-bold text-sm">Weighbridge</h4>
+                        <p className="text-3xs text-emerald-200/80 mt-1">Net Weight & 50kg Bags</p>
+
+                        {currentActiveProcurement.current_stage === 3 && (
+                          <button 
+                            onClick={() => handleAdvanceStage(currentActiveProcurement.token_id, 4, currentActiveProcurement)}
+                            disabled={isAdvancingStage}
+                            className="mt-3 w-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-extrabold py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer"
+                          >
+                            {isAdvancingStage ? '...' : '▶ Log Weight'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* STAGE 5: J-Form Approved */}
+                      <div className={`p-4 rounded-2xl border transition-all ${
+                        currentActiveProcurement.current_stage >= 5 
+                          ? 'bg-emerald-800/80 border-emerald-400 text-white shadow-md' 
+                          : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400/60'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-2xs font-extrabold uppercase tracking-wider text-emerald-300">Station 5</span>
+                          {currentActiveProcurement.current_stage >= 5 && <span className="text-xs">✓</span>}
+                        </div>
+                        <h4 className="font-bold text-sm">J-Form Approved</h4>
+                        <p className="text-3xs text-emerald-200/80 mt-1">DBT Payout Disbursed</p>
+
+                        {currentActiveProcurement.current_stage === 4 && (
+                          <button 
+                            onClick={() => handleAdvanceStage(currentActiveProcurement.token_id, 5, currentActiveProcurement)}
+                            disabled={isAdvancingStage}
+                            className="mt-3 w-full bg-emerald-400 hover:bg-emerald-300 text-emerald-950 font-extrabold py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer animate-pulse"
+                          >
+                            {isAdvancingStage ? '...' : '▶ Approve & Disburse'}
+                          </button>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* SECTION 2: TOKENS APPROVED FOR PAYMENTS */}
+        {tokenTab === 'approved' && (
+          <div className="space-y-4 animate-fade-in">
+            {approvedTokens.length === 0 ? (
+              <div className="p-12 bg-gray-50 rounded-2xl border border-gray-200 text-center space-y-3">
+                <span className="text-4xl block">💳</span>
+                <h4 className="font-extrabold text-gray-900 text-base">No Completed Settlements Yet</h4>
+                <p className="text-xs text-gray-500 max-w-md mx-auto">
+                  Once active tokens reach Station 5 (J-Form Approved), they will automatically move here with full gross payout and printable payment vouchers.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 text-gray-500 uppercase font-bold text-3xs border-b border-gray-200">
+                    <tr>
+                      <th className="py-3.5 px-4">Token & J-Form</th>
+                      <th className="py-3.5 px-4">Farmer Beneficiary</th>
+                      <th className="py-3.5 px-4">Crop & Evaluated Load</th>
+                      <th className="py-3.5 px-4">Gross Disbursed Payout</th>
+                      <th className="py-3.5 px-4">Disbursal Status</th>
+                      <th className="py-3.5 px-4 text-right">Official Receipt</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 font-medium">
+                    {approvedTokens.map((p) => (
+                      <tr key={p.token_id} className="hover:bg-emerald-50/40 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <span className="font-mono font-bold text-gray-900 block">{p.token_id}</span>
+                          <span className="text-3xs text-emerald-800 font-mono font-bold">{p.j_form_number || 'JF-2026-98124'}</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-extrabold text-gray-900 block">{p.farmer_name}</span>
+                          <span className="text-3xs text-gray-400 font-mono">{p.farmer_phone}</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="text-gray-900 block">{p.crop_type}</span>
+                          <span className="text-3xs text-gray-500 font-bold">{p.net_weight_quintals || 45.2} Qtl ({p.gunny_bags || 90} Bags)</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="text-base font-black text-emerald-800">
+                            ₹{(p.gross_payout || 102830).toLocaleString('en-IN')}
+                          </span>
+                          <span className="text-3xs text-gray-400 block font-mono">MSP @ ₹{p.msp_rate || 2275}/Q</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 text-emerald-900 rounded-full font-bold text-3xs uppercase">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span>DBT Disbursed</span>
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            onClick={() => setSelectedVoucher(p)}
+                            className="bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-1.5 rounded-xl font-bold text-3xs shadow-sm transition-all cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <span>📄</span> Voucher
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
-      {/* 3. MANAGER'S ASSIGNED MANDI FACILITY & CAPACITY CONTROLS */}
+      {/* 3. MANDI STORAGE CAPACITY & QUOTA MANAGEMENT */}
       {managerCentre && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
-            <span>🏢</span> Mandi Warehouse Capacity & Safety Controls
-          </h3>
+        <div className="bg-white rounded-3xl shadow-md p-6 md:p-8 border border-gray-200 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-4">
+            <div>
+              <span className="text-3xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md">
+                Warehouse Telemetry & Quota Allocation
+              </span>
+              <h3 className="text-xl font-black text-gray-900 mt-1">Live Mandi Capacity Console</h3>
+            </div>
+            
+            <span className="text-xs text-gray-400 font-medium">
+              Last Synced: <strong className="text-gray-700 font-mono">{lastSyncedTime}</strong>
+            </span>
+          </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-6">
+          <div className="space-y-4">
             {(() => {
               const max = managerCentre.daily_capacity_quintals || 1000;
               const maxCeiling = managerCentre.max_designed_capacity_quintals || 2500;
               const booked = managerCentre.booked_capacity_quintals || 0;
-              const percent = managerCentre.utilization_percentage || Math.round((booked / max) * 100);
+              const percent = Math.min(100, Math.round((booked / max) * 100));
+              const available = Math.max(0, max - booked);
               const isExpanded = expandedCentreId === managerCentre._id;
 
-              let barColor = 'bg-emerald-500';
-              let badgeBg = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-              let statusLabel = '🟢 Normal Intake';
-
-              if (managerCentre.status === 'divert_active') {
-                barColor = 'bg-amber-500';
-                badgeBg = 'bg-amber-50 text-amber-800 border-amber-200 animate-pulse';
-                statusLabel = '⚠️ Traffic Diverted';
-              } else if (percent >= 85) {
-                barColor = 'bg-red-500';
-                badgeBg = 'bg-red-50 text-red-800 border-red-200';
-                statusLabel = '🔴 Critical Load';
-              } else if (percent >= 60) {
-                barColor = 'bg-amber-500';
-                badgeBg = 'bg-amber-50 text-amber-800 border-amber-200';
-                statusLabel = '🟡 Filling Steadily';
-              }
-
               return (
-                <div className="space-y-6">
+                <div key={managerCentre._id} className="space-y-4">
                   
-                  {/* Top Bar */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-4">
-                    <div>
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md">
-                        {managerCentre.state} • {managerCentre.district}
-                      </span>
-                      <h4 className="text-xl font-extrabold text-gray-900 mt-1">
-                        {managerCentre.name}
-                      </h4>
-                      <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                        <span>📍</span> {managerCentre.location}
-                      </p>
+                  {/* Metric Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
+                      <span className="text-gray-400 font-semibold block text-3xs uppercase">Facility Name</span>
+                      <span className="font-extrabold text-gray-900 text-sm truncate block mt-0.5">{managerCentre.name}</span>
                     </div>
 
-                    <span className={`text-xs font-extrabold px-3 py-1 rounded-full border self-start sm:self-auto ${badgeBg}`}>
-                      {statusLabel}
-                    </span>
+                    <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200">
+                      <span className="text-emerald-700 font-semibold block text-3xs uppercase">Available Capacity</span>
+                      <span className="text-lg font-black text-emerald-950 block mt-0.5">{available.toLocaleString()} Q</span>
+                    </div>
+
+                    <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
+                      <span className="text-gray-400 font-semibold block text-3xs uppercase">Booked Load</span>
+                      <span className="text-lg font-black text-gray-900 block mt-0.5">{booked.toLocaleString()} Q</span>
+                    </div>
+
+                    <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
+                      <span className="text-gray-400 font-semibold block text-3xs uppercase">Daily Intake Quota</span>
+                      <span className="text-lg font-black text-gray-900 block mt-0.5">{max.toLocaleString()} Q</span>
+                    </div>
                   </div>
 
                   {/* Progress Bar */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-baseline text-xs font-bold">
-                      <span className="text-gray-700">Storage Capacity Utilization</span>
-                      <span className={`text-base ${percent >= 85 ? 'text-red-600 font-extrabold' : 'text-gray-900'}`}>
-                        {percent}%
-                      </span>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-2xs font-extrabold">
+                      <span className="text-gray-500">Storage Utilization:</span>
+                      <span className={percent >= 85 ? 'text-red-600' : 'text-emerald-700'}>{percent}% Capacity Used</span>
                     </div>
-
-                    <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden p-0.5 border border-gray-200 shadow-inner">
+                    <div className="w-full bg-gray-100 rounded-full h-3.5 overflow-hidden p-0.5 border border-gray-200 shadow-inner">
                       <div 
-                        className={`h-full rounded-full transition-all duration-700 ${barColor}`} 
-                        style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                        className={`h-full rounded-full transition-all duration-700 ${
+                          percent >= 85 ? 'bg-red-500' : percent >= 60 ? 'bg-amber-500' : 'bg-emerald-600'
+                        }`}
+                        style={{ width: `${Math.max(0, percent)}%` }}
                       ></div>
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs text-gray-500 pt-1 font-medium">
-                      <span>Booked: <strong>{booked} Q</strong></span>
-                      <span>Available: <strong className="text-emerald-700">{managerCentre.available_capacity_quintals || (max - booked)} Q</strong></span>
-                      <span>Current Limit: <strong>{max} Q</strong></span>
-                      <span>Physical Silo Ceiling: <strong className="text-gray-700">{maxCeiling} Q</strong></span>
                     </div>
                   </div>
 
@@ -664,7 +905,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-inner space-y-2">
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-extrabold text-gray-700">Adjust Daily Limit:</span>
-                        <span className="text-[10px] text-gray-400 font-mono">Max Silo: {maxCeiling} Q</span>
+                        <span className="text-3xs text-gray-400 font-mono">Max Silo: {maxCeiling} Q</span>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -687,7 +928,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                         </button>
                       </div>
 
-                      <p className="text-[10px] text-gray-400 font-medium">
+                      <p className="text-3xs text-gray-400 font-medium">
                         Allowed: <strong className="text-gray-600">{booked} Q</strong> (Booked) – <strong className="text-emerald-700">{maxCeiling} Q</strong> (Silo Ceiling)
                       </p>
                     </div>
@@ -696,7 +937,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-inner flex flex-col justify-between gap-3">
                       <div>
                         <span className="font-extrabold text-gray-700 text-xs block mb-1">Mandi Traffic Controls:</span>
-                        <p className="text-[11px] text-gray-500">
+                        <p className="text-2xs text-gray-500">
                           Configure 3-hour shift allocations or activate diversion advisories.
                         </p>
                       </div>
@@ -727,79 +968,72 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                   {/* 3-HOUR SHIFT BREAKDOWN & CUSTOM QUOTA EDITOR */}
                   {isExpanded && (
                     <div className="mt-4 pt-4 border-t border-gray-200 space-y-4 animate-fade-in-down">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-wrap">
                         <div>
                           <p className="text-xs font-extrabold text-gray-800 uppercase tracking-wider">
                             Daily Shift Quota Breakdown (3 Hours Each)
                           </p>
-                          <p className="text-[11px] text-gray-500">
+                          <p className="text-2xs text-gray-500">
                             Allocate custom storage limits to specific morning, afternoon, or evening shifts.
                           </p>
                         </div>
 
-                        {!isEditingShifts ? (
-                          <button 
-                            onClick={() => setIsEditingShifts(true)}
-                            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm cursor-pointer self-start sm:self-auto flex items-center gap-1"
-                          >
-                            <span>✏️</span> Customize Shifts
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <button 
-                              onClick={() => {
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Shift Date Dropdown */}
+                          <div className="flex items-center gap-1.5 bg-emerald-50/80 px-2.5 py-1.5 rounded-lg border border-emerald-200 text-xs shadow-inner">
+                            <span className="font-bold text-emerald-900 text-3xs uppercase">📅 Date:</span>
+                            <select
+                              value={shiftDate}
+                              onChange={(e) => {
+                                const newDate = e.target.value;
+                                setShiftDate(newDate);
                                 setIsEditingShifts(false);
-                                fetchSlots(managerCentre._id);
+                                fetchSlots(managerCentre._id, newDate);
                               }}
-                              className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                              className="bg-white border border-emerald-300 font-bold text-gray-800 rounded-md px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-sm"
                             >
-                              Cancel
-                            </button>
-                            <button 
-                              onClick={() => handleSaveShiftQuotas(managerCentre._id)}
-                              disabled={!isShiftQuotaValid || isSavingShifts}
-                              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors shadow-md cursor-pointer flex items-center gap-1"
-                            >
-                              <span>💾</span> {isSavingShifts ? 'Saving...' : 'Save Shifts'}
-                            </button>
+                              {shiftDateOptions.map(opt => (
+                                <option key={opt.dateStr} value={opt.dateStr}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
                           </div>
-                        )}
+
+                          {!isEditingShifts ? (
+                            <button 
+                              onClick={() => setIsEditingShifts(true)}
+                              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm cursor-pointer flex items-center gap-1"
+                            >
+                              <span>✏️</span> Customize Shifts
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={() => {
+                                  setIsEditingShifts(false);
+                                  fetchSlots(managerCentre._id, shiftDate);
+                                }}
+                                className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button 
+                                onClick={() => handleSaveShiftQuotas(managerCentre._id)}
+                                disabled={!isShiftQuotaValid || isSavingShifts}
+                                className={`text-xs font-bold px-4 py-1.5 rounded-lg transition-all shadow-md cursor-pointer ${
+                                  isShiftQuotaValid 
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95' 
+                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                }`}
+                              >
+                                {isSavingShifts ? 'Saving...' : '💾 Save Quotas'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Live Allocation Math Status Pill */}
-                      {isEditingShifts && (
-                        <div className={`p-3 rounded-xl border text-xs font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                          hasFloorViolation
-                            ? 'bg-red-50 border-red-300 text-red-700 animate-shake'
-                            : isShiftQuotaBalanced 
-                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                              : allocationDiff > 0
-                                ? 'bg-red-50 border-red-300 text-red-700'
-                                : 'bg-amber-50 border-amber-300 text-amber-800'
-                        }`}>
-                          <div className="flex items-center gap-2">
-                            <span>{hasFloorViolation ? '🛑' : isShiftQuotaBalanced ? '✅' : '⚖️'}</span>
-                            <span>
-                              {hasFloorViolation ? (
-                                <>Safety Block: <strong>{floorViolationSlot.slot_name}</strong> is below booked grain (<strong>{floorViolationSlot.booked_capacity_quintals} Q</strong>)</>
-                              ) : (
-                                <>Allocated Sum: <strong>{currentTotalAllocated.toLocaleString()} Q</strong> / Required Daily: <strong>{requiredDailyQuota.toLocaleString()} Q</strong></>
-                              )}
-                            </span>
-                          </div>
-
-                          <span className="text-[11px] font-mono uppercase">
-                            {hasFloorViolation 
-                              ? 'Floor Violation'
-                              : isShiftQuotaBalanced 
-                                ? '✓ 100% Balanced & Valid' 
-                                : allocationDiff > 0 
-                                  ? `Overallocated by +${allocationDiff} Q` 
-                                  : `Remaining to allocate: ${Math.abs(allocationDiff)} Q`}
-                          </span>
-                        </div>
-                      )}
-                      
                       {centreSlots.length === 0 ? (
                         <p className="text-xs text-gray-400 italic">Loading shift quotas...</p>
                       ) : (
@@ -827,11 +1061,11 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                                       <span className="text-gray-500">Available:</span>
                                       <span className="font-extrabold text-emerald-700">{slotAvail} Q</span>
                                     </div>
-                                    <div className="flex justify-between text-[11px] text-gray-400">
+                                    <div className="flex justify-between text-2xs text-gray-400">
                                       <span>Shift Limit:</span>
                                       <span className="font-bold text-gray-700">{slotMax} Q</span>
                                     </div>
-                                    <div className="text-[10px] text-gray-400 pt-1 border-t border-gray-200 flex justify-between">
+                                    <div className="text-3xs text-gray-400 pt-1 border-t border-gray-200 flex justify-between">
                                       <span>Booked: {slotBooked} Q</span>
                                     </div>
                                   </>
@@ -839,10 +1073,10 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                                   <div className="space-y-2 pt-1">
                                     <div>
                                       <div className="flex justify-between items-baseline mb-1">
-                                        <label className="text-[10px] font-bold uppercase text-gray-500 block">
+                                        <label className="text-3xs font-bold uppercase text-gray-500 block">
                                           Shift Capacity
                                         </label>
-                                        <span className={`text-[10px] font-bold ${isBelowFloor ? 'text-red-600 font-extrabold' : 'text-gray-400'}`}>
+                                        <span className={`text-3xs font-bold ${isBelowFloor ? 'text-red-600 font-extrabold' : 'text-gray-400'}`}>
                                           Min {slotBooked} Q
                                         </span>
                                       </div>
@@ -858,10 +1092,10 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                                               : 'bg-gray-50 border border-gray-300 text-gray-800 focus:ring-2 focus:ring-emerald-500'
                                           }`}
                                         />
-                                        <span className="absolute right-2.5 top-1.5 text-[11px] font-bold text-gray-400">Q</span>
+                                        <span className="absolute right-2.5 top-1.5 text-2xs font-bold text-gray-400">Q</span>
                                       </div>
                                     </div>
-                                    <p className={`text-[10px] ${isBelowFloor ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
+                                    <p className={`text-3xs ${isBelowFloor ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
                                       {isBelowFloor ? `❌ Cannot be less than ${slotBooked} Q (Booked)` : `Already Booked: ${slotBooked} Q`}
                                     </p>
                                   </div>

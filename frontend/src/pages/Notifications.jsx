@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api/notifications';
+const API_BASE = (import.meta.env.VITE_API_URL || '') + '/api/notifications';
 
 const CATEGORY_CONFIG = {
   registration: { label: 'Sign-up & Account', dot: 'bg-purple-400' },
@@ -53,8 +53,8 @@ export default function Notifications() {
     }
   })();
 
-  const [farmerId]    = useState(savedFarmer.aadhar_number || localStorage.getItem('farmer_aadhar') || '111122223333');
-  const [farmerName]  = useState(savedFarmer.name || 'Aman Kumar');
+  const [farmerId]    = useState(localStorage.getItem('farmer_aadhar') || savedFarmer.aadhar_number || '111122223333');
+  const [farmerName]  = useState(localStorage.getItem('farmer_name') || savedFarmer.name || 'Aman Kumar');
   const [notifications, setNotifications]     = useState([]);
   const [unreadCount, setUnreadCount]         = useState(0);
   const [loading, setLoading]                 = useState(false);
@@ -307,15 +307,15 @@ export default function Notifications() {
         </div>
       </div>
 
-      {/* ── Category Tabs ── */}
-      <div className="flex flex-wrap gap-1 border-b border-gray-200">
+      {/* ── Category Tabs (Horizontally scrollable on mobile) ── */}
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto pb-1 no-scrollbar touch-manipulation">
         {CATEGORY_TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveCategory(tab.id)}
-            className={`px-3 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`px-3.5 py-2 text-xs sm:text-sm font-bold transition-colors border-b-2 -mb-px whitespace-nowrap shrink-0 cursor-pointer ${
               activeCategory === tab.id
-                ? 'border-green-600 text-green-700'
+                ? 'border-brand text-emerald-800 bg-emerald-50/60 rounded-t-lg font-extrabold'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >

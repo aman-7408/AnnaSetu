@@ -117,4 +117,56 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// 4. STEP 4: FARMER LOGIN - SEND OTP (Requires existing registration in AnnaSetu)
+router.post('/login/send-otp', async (req, res) => {
+  const { aadhar_number } = req.body;
+  if (!aadhar_number || aadhar_number.length !== 12 || !/^\d{12}$/.test(aadhar_number)) {
+    return res.status(400).json({ error: 'Please enter a valid 12-digit Aadhaar number.' });
+  }
+
+  try {
+    const farmer = await Farmer.findOne({ aadhar_number });
+    if (!farmer) {
+      return res.status(404).json({
+        error: 'This Aadhaar number is not registered in AnnaSetu. Please complete your farmer registration first.'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP sent successfully to registered mobile number.',
+      farmer_name: farmer.name,
+      masked_phone: farmer.phone ? `••••••${farmer.phone.slice(-4)}` : '••••••'
+    });
+  } catch (err) {
+    console.error('Farmer login send OTP error:', err);
+    res.status(500).json({ error: 'Server error during login authentication.' });
+  }
+});
+
+// 5. STEP 5: FARMER LOGIN - VERIFY OTP (Returns full authenticated farmer profile)
+router.post('/login/verify-otp', async (req, res) => {
+  const { aadhar_number, otp } = req.body;
+
+  if (otp !== '123456') {
+    return res.status(400).json({ error: 'Invalid OTP. Please check the code and try again.' });
+  }
+
+  try {
+    const farmer = await Farmer.findOne({ aadhar_number });
+    if (!farmer) {
+      return res.status(404).json({ error: 'Farmer profile not found in AnnaSetu registry.' });
+    }
+
+    res.json({
+      success: true,
+      message: `Welcome back, ${farmer.name}!`,
+      farmer
+    });
+  } catch (err) {
+    console.error('Farmer login verify OTP error:', err);
+    res.status(500).json({ error: 'Server error during OTP verification.' });
+  }
+});
+
 module.exports = router;

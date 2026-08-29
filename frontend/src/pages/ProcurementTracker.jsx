@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api/capacity';
+const API_BASE = (import.meta.env.VITE_API_URL || '') + '/api/capacity';
 
 export default function ProcurementTracker() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -23,17 +23,25 @@ export default function ProcurementTracker() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch recent active tokens from DB for quick-select chips
+  // Fetch recent active tokens from DB for quick-select chips & default load
   useEffect(() => {
     fetch(`${API_BASE}/procurements`)
       .then(res => res.json())
       .then(data => {
-        if (data.success && data.procurements) {
+        if (data.success && data.procurements && data.procurements.length > 0) {
           setRecentTokens(data.procurements.slice(0, 5));
+
+          // Auto-load most recent token if no token is in URL query
+          const urlToken = searchParams.get('token');
+          if (!urlToken && data.procurements[0]) {
+            const defaultToken = data.procurements[0].token_id;
+            setSearchToken(defaultToken);
+            fetchProcurement(defaultToken);
+          }
         }
       })
       .catch(() => {});
-  }, []);
+  }, [searchParams]);
 
   // Read URL query parameter ?token=AS-2026-xxx
   useEffect(() => {
@@ -281,9 +289,11 @@ export default function ProcurementTracker() {
         </div>
       </div>
 
-      {/* HORIZONTAL PROGRESS MILESTONES */}
+      {/* PROGRESS MILESTONES (Responsive: Horizontal on Desktop, Vertical on Mobile) */}
       <div className="bg-white rounded-3xl shadow-md border border-gray-200 p-6 sm:p-10 mb-8 overflow-hidden">
-        <div className="relative">
+        
+        {/* DESKTOP / TABLET HORIZONTAL STEPPER */}
+        <div className="hidden sm:block relative">
           {/* Connecting Line Base */}
           <div className="absolute top-6 left-[10%] right-[10%] h-1.5 bg-gray-100 rounded-full z-0"></div>
           
@@ -325,7 +335,7 @@ export default function ProcurementTracker() {
                     <p className={`text-xs font-black uppercase tracking-wider mb-1 ${isActive ? 'text-brand' : isPast ? 'text-gray-800' : 'text-gray-400'}`}>
                       {stage.title}
                     </p>
-                    <p className="text-[10px] text-gray-500 hidden sm:block font-medium">
+                    <p className="text-[10px] text-gray-500 font-medium">
                       {stage.subtitle}
                     </p>
                   </div>
@@ -334,6 +344,55 @@ export default function ProcurementTracker() {
             })}
           </div>
         </div>
+
+        {/* MOBILE VERTICAL STEPPER */}
+        <div className="block sm:hidden space-y-4">
+          <span className="text-2xs font-extrabold uppercase tracking-wider text-gray-400 block mb-2">
+            Consignment Intake Stages ({currentStage}/5)
+          </span>
+          <div className="relative pl-6 space-y-5 before:absolute before:left-3 before:top-3 before:bottom-3 before:w-0.5 before:bg-gray-200">
+            {STAGES.map((stage) => {
+              const isActive = currentStage === stage.id;
+              const isPast = currentStage > stage.id;
+
+              return (
+                <div key={stage.id} className="relative flex items-center gap-3.5">
+                  <div className={`absolute -left-6 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs border-2 z-10 transition-all ${
+                    isActive
+                      ? 'bg-brand text-white border-emerald-300 ring-4 ring-emerald-100 scale-110 shadow-sm'
+                      : isPast
+                      ? 'bg-brand text-white border-brand'
+                      : 'bg-white text-gray-400 border-gray-300'
+                  }`}>
+                    {isActive ? (showTractorIcon ? '🚛' : stage.id) : isPast ? '✓' : stage.id}
+                  </div>
+                  <div className={`flex-1 p-3 rounded-xl border transition-all ${
+                    isActive
+                      ? 'bg-emerald-50/80 border-emerald-300 shadow-xs'
+                      : isPast
+                      ? 'bg-gray-50/60 border-gray-200'
+                      : 'bg-white border-gray-100 opacity-60'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <h4 className={`text-xs font-extrabold uppercase tracking-wide ${
+                        isActive ? 'text-emerald-900' : isPast ? 'text-gray-900' : 'text-gray-400'
+                      }`}>
+                        {stage.title}
+                      </h4>
+                      {isActive && (
+                        <span className="text-3xs font-extrabold bg-brand text-white px-2 py-0.5 rounded-full uppercase">
+                          Live Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-3xs text-gray-500 mt-0.5 font-medium">{stage.subtitle}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
       </div>
 
       {/* FINAL PAYOUT HERO CARD (Only visible if Stage 5) */}

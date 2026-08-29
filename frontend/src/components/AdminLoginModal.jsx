@@ -39,7 +39,7 @@ export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+    if (e?.preventDefault) e.preventDefault();
     setError('');
 
     const trimmedUser = officerId.trim().toLowerCase();

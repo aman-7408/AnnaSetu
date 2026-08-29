@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function Registration() {
   const navigate = useNavigate();
@@ -115,6 +115,10 @@ export default function Registration() {
       if (res.ok && data.success) {
         setOtpSent(true);
       } else if (res.status === 409 || data.already_registered) {
+        try {
+          localStorage.setItem('farmer_aadhar', aadhar);
+          if (data.farmer_name) localStorage.setItem('farmer_name', data.farmer_name);
+        } catch {}
         setAlreadyRegisteredData(data);
       } else {
         setError(data.error || 'Failed to send OTP.');
@@ -137,6 +141,10 @@ export default function Registration() {
       const data = await res.json();
       
       if (res.ok) {
+        try {
+          localStorage.setItem('farmer_aadhar', aadhar);
+          if (data.autoFillData?.name) localStorage.setItem('farmer_name', data.autoFillData.name);
+        } catch {}
         setOtpVerified(true);
         setFormData(prev => ({
           ...prev,
@@ -168,6 +176,23 @@ export default function Registration() {
       const data = await res.json();
       
       if (res.ok) {
+        const sessionData = {
+          aadhar,
+          name: formData.name,
+          phone: formData.phone,
+          address: formData.address,
+          land_size: formData.land_size,
+          plot_number: formData.plot_number,
+          bank_account_number: formData.bank_account_number,
+          bank_ifsc: formData.bank_ifsc,
+          logged_in_at: new Date().toISOString()
+        };
+        try {
+          localStorage.setItem('farmer_session', JSON.stringify(sessionData));
+          localStorage.setItem('farmer_aadhar', aadhar);
+          localStorage.setItem('farmer_name', formData.name);
+          window.dispatchEvent(new Event('farmer-session-changed'));
+        } catch {}
         // Trigger the Custom Success Modal instead of Browser Alert
         setShowSuccessModal(true);
       } else {
@@ -182,7 +207,7 @@ export default function Registration() {
   // Called when user clicks "OK" on the success modal
   const handleSuccessOk = () => {
     setShowSuccessModal(false);
-    navigate('/');
+    navigate('/book-slot');
   };
 
   return (
@@ -231,13 +256,22 @@ export default function Registration() {
               Your details have been successfully verified.
             </p>
             
-            {/* OK Button - Drops in fully animated at the very end */}
-            <button 
-              onClick={handleSuccessOk}
-              className={`w-full bg-brand text-white font-bold py-3.5 rounded-xl hover:bg-brand-dark transition-all duration-500 delay-[1000ms] shadow-lg hover:shadow-xl hover:-translate-y-0.5 ${isDrawn ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
-            >
-              OK
-            </button>
+            {/* Action Buttons - Drops in fully animated at the very end */}
+            <div className={`space-y-2.5 transition-all duration-500 delay-[1000ms] ${isDrawn ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+              <button 
+                onClick={handleSuccessOk}
+                className="w-full bg-brand text-white font-bold py-3.5 rounded-xl hover:bg-brand-dark transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm cursor-pointer"
+              >
+                <span>⚡</span>
+                <span>Proceed to Slot Booking</span>
+              </button>
+              <button 
+                onClick={() => { setShowSuccessModal(false); navigate('/'); }}
+                className="w-full text-xs font-bold text-gray-500 hover:text-gray-800 py-1.5 cursor-pointer"
+              >
+                Go to Home Screen
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -290,9 +324,11 @@ export default function Registration() {
                 <label className="block text-gray-700 font-bold mb-2">Aadhar Number (12 Digits)</label>
                 <input 
                   type="text" 
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   maxLength="12"
                   disabled={otpVerified}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-gray-100 disabled:text-gray-500 text-lg tracking-widest"
+                  className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-gray-100 disabled:text-gray-500 text-lg tracking-widest font-mono"
                   placeholder="0000 0000 0000"
                   value={aadhar}
                   onChange={(e) => setAadhar(e.target.value.replace(/[^0-9]/g, ''))}
@@ -302,7 +338,7 @@ export default function Registration() {
                   <button 
                     onClick={sendOtp}
                     disabled={aadhar.length !== 12 || isLoading}
-                    className="mt-3 w-full bg-brand text-white font-bold py-3 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 cursor-pointer"
+                    className="mt-3 w-full bg-brand text-white font-bold py-3.5 rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-50 cursor-pointer shadow-md"
                   >
                     {isLoading ? 'Sending...' : 'Send OTP'}
                   </button>
@@ -322,11 +358,18 @@ export default function Registration() {
                     <div className="space-y-2">
                       <button
                         type="button"
-                        onClick={() => navigate('/')}
+                        onClick={() => navigate('/book-slot')}
                         className="w-full bg-brand text-white font-bold py-3 rounded-xl hover:bg-brand-dark transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 text-xs sm:text-sm"
                       >
-                        <span>🏠</span>
-                        <span>Go to Home Screen</span>
+                        <span>⚡</span>
+                        <span>Proceed to Slot Booking</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/')}
+                        className="w-full bg-white text-gray-700 border border-gray-300 font-bold py-2.5 rounded-xl hover:bg-gray-50 transition-all text-xs cursor-pointer"
+                      >
+                        Go to Home Screen
                       </button>
                       <button
                         type="button"
@@ -334,7 +377,7 @@ export default function Registration() {
                           setAlreadyRegisteredData(null);
                           setAadhar('');
                         }}
-                        className="w-full text-xs font-bold text-gray-500 hover:text-gray-800 py-1.5 cursor-pointer"
+                        className="w-full text-xs font-bold text-gray-500 hover:text-gray-800 py-1 cursor-pointer"
                       >
                         ← Enter Different Aadhaar
                       </button>
@@ -351,6 +394,8 @@ export default function Registration() {
                     <input 
                       ref={otpInputRef}
                       type="text" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       maxLength="6"
                       disabled={otpVerified}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-text z-10"
@@ -458,7 +503,9 @@ export default function Registration() {
                   <input 
                     required
                     type="text" 
-                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand"
+                    inputMode="numeric"
+                    placeholder="e.g. 000012345678"
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand font-mono"
                     value={formData.bank_account_number}
                     onChange={(e) => setFormData({...formData, bank_account_number: e.target.value})}
                   />

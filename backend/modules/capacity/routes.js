@@ -5,6 +5,7 @@ const Slot = require('./Slot');
 const Procurement = require('./Procurement');
 const Payment = require('../payment/Payment');
 const Farmer = require('../registration/Farmer');
+const Booking = require('../booking/Booking');
 const { sendNotification } = require('../notifications/notificationService');
 
 // 1. GET ALL CENTRES
@@ -222,22 +223,13 @@ router.put('/centres/:id/divert', async (req, res) => {
 // 6. PROCUREMENT STAGE TRACKING ENDPOINTS
 router.get('/procurements', async (req, res) => {
   try {
-    let procurements = await Procurement.find().sort({ updated_at: -1 });
-
-    if (!procurements || procurements.length === 0) {
-      const demoItem = await Procurement.create({
-        token_id: 'AS-2026-WHT-7821',
-        farmer_name: 'Aman Kumar',
-        farmer_phone: '+91 98765 43210',
-        crop_type: 'Wheat (Sharbati A-Grade)',
-        centre_name: 'Meerut Central Agro Warehouse',
-        current_stage: 1,
-        slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)'
-      });
-      procurements = [demoItem];
+    const { centre_name } = req.query;
+    let query = {};
+    if (centre_name) {
+      query.centre_name = centre_name;
     }
-
-    res.json({ success: true, procurements });
+    const procurements = await Procurement.find(query).sort({ updated_at: -1 });
+    res.json({ success: true, count: procurements.length, procurements });
   } catch (err) {
     console.error('Error fetching procurements:', err);
     res.status(500).json({ error: 'Failed to fetch procurement stages' });
@@ -301,6 +293,16 @@ router.post('/procurements/advance-stage', async (req, res) => {
           }
         });
       } else if (target_stage === 5) {
+        // Auto-update Booking record status to completed in Module 2
+        try {
+          await Booking.findOneAndUpdate(
+            { token_id: proc.token_id },
+            { status: 'completed' }
+          );
+        } catch (bookErr) {
+          console.warn('Booking status update error:', bookErr.message);
+        }
+
         // Auto-create/sync DBT Payment record in Module 6
         try {
           const farmerRec = await Farmer.findOne({ aadhar_number: '111122223333' });
