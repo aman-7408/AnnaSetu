@@ -53,8 +53,8 @@ export default function Notifications() {
     }
   })();
 
-  const [farmerId]    = useState(localStorage.getItem('farmer_aadhar') || savedFarmer.aadhar_number || '111122223333');
-  const [farmerName]  = useState(localStorage.getItem('farmer_name') || savedFarmer.name || 'Aman Kumar');
+  const [farmerId]    = useState(localStorage.getItem('farmer_aadhar') || savedFarmer.aadhar_number || '');
+  const [farmerName]  = useState(localStorage.getItem('farmer_name') || savedFarmer.name || 'Registered Kisan');
   const [notifications, setNotifications]     = useState([]);
   const [unreadCount, setUnreadCount]         = useState(0);
   const [loading, setLoading]                 = useState(false);
@@ -266,7 +266,7 @@ export default function Notifications() {
   };
 
   return (
-    <div className="py-8 px-4 max-w-3xl mx-auto space-y-6">
+    <div className="py-4 px-3 sm:py-8 sm:px-4 max-w-3xl mx-auto space-y-4 sm:space-y-6">
 
       {/* ── Farmer-Friendly Push Notification Banner ── */}
       {pushPermission !== 'granted' && (

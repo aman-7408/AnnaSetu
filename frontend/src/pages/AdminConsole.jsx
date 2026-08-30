@@ -23,18 +23,27 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
   const [shiftInputs, setShiftInputs] = useState({});
   const [isSavingShifts, setIsSavingShifts] = useState(false);
 
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
   // 7-Day Rolling Procurement Window Options
   const shiftDateOptions = Array.from({ length: 8 }, (_, i) => {
     const d = new Date(nowMs + i * 24 * 60 * 60 * 1000);
     const dateStr = d.toISOString().split('T')[0];
-    const label = i === 0 ? `Today (${dateStr})` : i === 1 ? `Tomorrow (${dateStr})` : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ` (${dateStr})`;
+    const label = i === 0 ? `Today (${formatDateDisplay(dateStr)})` : i === 1 ? `Tomorrow (${formatDateDisplay(dateStr)})` : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ` (${formatDateDisplay(dateStr)})`;
     return { dateStr, label };
   });
 
   // Token Sections & Selection State
-  const [tokenTab, setTokenTab] = useState('active'); // 'active' | 'approved'
+  const [tokenTab, setTokenTab] = useState('active'); // 'active' | 'approved' | 'rejected'
   const [selectedTokenId, setSelectedTokenId] = useState(null);
   const [selectedVoucher, setSelectedVoucher] = useState(null);
+  const [rejectModalData, setRejectModalData] = useState(null); // { tokenId, stage, defaultReason }
+  const [customRejectReason, setCustomRejectReason] = useState('');
+  const [isRejecting, setIsRejecting] = useState(false);
 
   // 1. Fetch Centres & Procurements from MongoDB
   const fetchAllData = async (showSyncIndicator = false) => {
@@ -94,27 +103,30 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     }
   };
 
-  // 3. Manager: Set Daily Capacity with Two-Way Safety Shield
-  const handleSetCapacity = async (centreId) => {
+  // 3. Manager: Set Daily Capacity for Selected Target Date with Safety Shield
+  const handleSetCapacity = async (centreId, targetDate = shiftDate) => {
     const target = centres.find(c => c._id === centreId);
     if (!target) return;
 
     const rawInput = inputCapacities[centreId];
     if (rawInput === undefined || rawInput === '') {
-      showError('Please enter a valid capacity number.');
+      showError('Please enter a valid capacity number in Quintals.');
       return;
     }
 
     const newCap = Number(rawInput);
     const ceiling = target.max_designed_capacity_quintals || 2500;
-    const floor = target.booked_capacity_quintals || 0;
+    
+    // Check booked grain for this specific selected date
+    const currentSlots = slotsData[centreId] || [];
+    const floor = currentSlots.reduce((acc, s) => acc + (s.booked_capacity_quintals || 0), 0);
 
     if (newCap > ceiling) {
       showError(`❌ Safety Block: Exceeds physical silo ceiling (${ceiling.toLocaleString()} Q) for ${target.name}.`);
       return;
     }
     if (newCap < floor) {
-      showError(`❌ Safety Block: Cannot set capacity lower than currently booked grain (${floor.toLocaleString()} Q).`);
+      showError(`❌ Safety Block: Cannot set limit lower than already booked grain (${floor.toLocaleString()} Q) on ${formatDateDisplay(targetDate)}.`);
       return;
     }
 
@@ -122,13 +134,14 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       const res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/capacity`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ daily_capacity_quintals: newCap })
+        body: JSON.stringify({ daily_capacity_quintals: newCap, date: targetDate })
       });
       const data = await res.json();
       if (data.success) {
-        showFeedback(`✓ Daily capacity for ${target.name} set to ${newCap.toLocaleString()} Q`);
+        showFeedback(`✓ Mandi intake limit for ${formatDateDisplay(targetDate)} updated to ${newCap.toLocaleString()} Q!`);
         fetchAllData(false);
-        fetchSlots(centreId);
+        fetchSlots(centreId, targetDate);
+        setInputCapacities(prev => ({ ...prev, [centreId]: '' }));
       } else {
         showError(data.error || 'Failed to update capacity');
       }
@@ -138,8 +151,8 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     }
   };
 
-  // 4. Manager: Save Custom 3-Hour Shift Quotas
-  const handleSaveShiftQuotas = async (centreId) => {
+  // 4. Manager: Save Custom 3-Hour Shift Quotas for Selected Date
+  const handleSaveShiftQuotas = async (centreId, targetDate = shiftDate) => {
     const target = centres.find(c => c._id === centreId);
     if (!target) return;
 
@@ -151,10 +164,10 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     }));
 
     const totalSum = updatedSlotsPayload.reduce((acc, s) => acc + s.max_capacity_quintals, 0);
-    const requiredDaily = target.daily_capacity_quintals;
+    const requiredDaily = targetSlots.reduce((acc, s) => acc + (s.max_capacity_quintals || 0), 0) || target.daily_capacity_quintals;
 
     if (totalSum !== requiredDaily) {
-      showError(`❌ Mathematical Mismatch: Shift total (${totalSum} Q) must equal Mandi daily capacity (${requiredDaily} Q).`);
+      showError(`❌ Mathematical Mismatch: Shift total (${totalSum} Q) must equal configured daily quota (${requiredDaily} Q) on ${formatDateDisplay(targetDate)}.`);
       return;
     }
 
@@ -162,7 +175,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       const newCap = Number(shiftInputs[slot.slot_code] || 0);
       const bookedFloor = slot.booked_capacity_quintals || 0;
       if (newCap < bookedFloor) {
-        showError(`❌ Safety Block: Cannot set ${slot.slot_name} below currently booked grain (${bookedFloor} Q).`);
+        showError(`❌ Safety Block: Cannot set ${slot.slot_name} below booked grain (${bookedFloor} Q).`);
         return;
       }
     }
@@ -172,13 +185,13 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       const res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/slots`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slots: updatedSlotsPayload, date: shiftDate })
+        body: JSON.stringify({ slots: updatedSlotsPayload, date: targetDate })
       });
       const data = await res.json();
       if (data.success) {
-        showFeedback(`✓ Successfully balanced 3-hour shift quotas to match ${requiredDaily.toLocaleString()} Q!`);
+        showFeedback(`✓ Successfully updated 3-hour shift quotas for ${formatDateDisplay(targetDate)}!`);
         setIsEditingShifts(false);
-        fetchSlots(centreId, shiftDate);
+        fetchSlots(centreId, targetDate);
       } else {
         showError(data.error || 'Failed to update shift quotas.');
       }
@@ -246,6 +259,36 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     }
   };
 
+  const handleConfirmReject = async () => {
+    if (!rejectModalData) return;
+    setIsRejecting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/capacity/procurements/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token_id: rejectModalData.tokenId,
+          stage: rejectModalData.stage,
+          reason: customRejectReason || rejectModalData.defaultReason,
+          officer_name: userSession?.name || 'Mandi Inspection Officer'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showFeedback(`🚫 Consignment #${rejectModalData.tokenId} REJECTED & Alert Dispatched to Farmer!`);
+        setRejectModalData(null);
+        setCustomRejectReason('');
+        fetchAllData(true);
+      } else {
+        showError(data.error || 'Failed to reject consignment');
+      }
+    } catch (err) {
+      showError('Network error while rejecting consignment.');
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
   const handleResetSeed = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/capacity/seed`, { method: 'POST' });
@@ -287,12 +330,13 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     !assignedFacilityName || p.centre_name === assignedFacilityName
   );
 
-  // Filter Tokens into 2 Distinct Sections for this Facility
-  const activeTokens = facilityProcurements.filter(p => p.current_stage < 5);
-  const approvedTokens = facilityProcurements.filter(p => p.current_stage === 5);
+  // Filter Tokens into 3 Distinct Sections for this Facility
+  const activeTokens = facilityProcurements.filter(p => p.status !== 'rejected' && p.current_stage < 5);
+  const approvedTokens = facilityProcurements.filter(p => p.status !== 'rejected' && p.current_stage === 5);
+  const rejectedTokens = facilityProcurements.filter(p => p.status === 'rejected');
 
   // Active Token being processed (strictly real active tokens belonging to this facility)
-  const currentActiveProcurement = facilityProcurements.find(p => p.token_id === selectedTokenId && p.current_stage < 5) || activeTokens[0] || null;
+  const currentActiveProcurement = facilityProcurements.find(p => p.token_id === selectedTokenId && p.status !== 'rejected' && p.current_stage < 5) || activeTokens[0] || null;
 
   // Unauthorized Barrier
   if (!userSession) {
@@ -319,15 +363,21 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
 
   // Find manager centre
   const managerCentre = centres.find(
-    c => c.name.toLowerCase().includes(userSession.state?.toLowerCase() || '') || c.name === userSession.centreName
+    c => c.name.toLowerCase().includes(userSession?.state?.toLowerCase() || '') || c.name === userSession?.centreName
   ) || centres[0];
+
+  useEffect(() => {
+    if (managerCentre?._id) {
+      fetchSlots(managerCentre._id, shiftDate);
+    }
+  }, [managerCentre?._id, shiftDate]);
 
   const centreSlots = managerCentre ? (slotsData[managerCentre._id] || []) : [];
 
   // Calculation of shift quotas
   const currentTotalAllocated = Object.values(shiftInputs).reduce((acc, val) => acc + (Number(val) || 0), 0);
-  const requiredDailyQuota = managerCentre?.daily_capacity_quintals || 1200;
-  const allocationDiff = currentTotalAllocated - requiredDailyQuota;
+  const targetDateCapacity = centreSlots.reduce((acc, s) => acc + (s.max_capacity_quintals || 0), 0) || managerCentre?.daily_capacity_quintals || 1200;
+  const allocationDiff = currentTotalAllocated - targetDateCapacity;
   const isShiftQuotaBalanced = allocationDiff === 0;
 
   const floorViolationSlot = centreSlots.find(slot => {
@@ -429,12 +479,117 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     );
   };
 
+  // Rejection Dialog Modal
+  const renderRejectionModal = () => {
+    if (!rejectModalData) return null;
+
+    const stageTitle = rejectModalData.stage === 3 ? 'Stage 3: Quality Lab Assaying' : 'Stage 4: Weighbridge Measurement';
+
+    const quickReasons = rejectModalData.stage === 3 ? [
+      'Moisture content exceeds maximum allowable limit (12% Max FAQ)',
+      'Foreign matter & inorganic debris exceeds 2.0% tolerance',
+      'Severe grain discoloration / fungus infestation detected',
+      'Admixture with substandard non-procurement grain'
+    ] : [
+      'Gross tare vehicle weight mismatch exceeds allowable tolerance',
+      'Damaged / substandard packaging bags (Non-BIS jute bags)',
+      'Suspected weight discrepancy on double-beam scale check'
+    ];
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border-t-8 border-red-600 relative">
+          <button 
+            onClick={() => setRejectModalData(null)}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1 cursor-pointer"
+          >
+            ✕
+          </button>
+
+          <div className="p-6 bg-red-50/60 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-12 h-12 bg-red-100 rounded-full border-2 border-red-300 flex items-center justify-center text-2xl shadow-inner shrink-0 text-red-600">
+              🚫
+            </div>
+            <div>
+              <span className="text-3xs font-extrabold uppercase tracking-wider text-red-800 bg-red-100 px-2 py-0.5 rounded">
+                Official Rejection Action
+              </span>
+              <h3 className="text-lg font-black text-gray-900 mt-0.5">Reject Consignment</h3>
+              <p className="text-xs text-gray-500 font-mono">Token: {rejectModalData.tokenId}</p>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-4 text-xs text-gray-800">
+            <div>
+              <span className="text-gray-400 font-bold block text-3xs uppercase mb-1">Rejection Point</span>
+              <span className="font-extrabold text-red-900 text-sm">{stageTitle}</span>
+            </div>
+
+            <div>
+              <span className="text-gray-500 font-bold block text-3xs uppercase mb-1.5">Select Mandi Rejection Code / Reason:</span>
+              <div className="space-y-1.5 mb-3">
+                {quickReasons.map((r, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setCustomRejectReason(r)}
+                    className={`w-full text-left p-2.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                      (customRejectReason || rejectModalData.defaultReason) === r
+                        ? 'bg-red-50 border-red-400 text-red-950 font-bold shadow-xs'
+                        : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    • {r}
+                  </button>
+                ))}
+              </div>
+
+              <label className="block text-3xs font-bold text-gray-500 uppercase mb-1">Or Enter Custom Inspection Remark:</label>
+              <textarea
+                value={customRejectReason}
+                onChange={(e) => setCustomRejectReason(e.target.value)}
+                placeholder="Enter specific officer observation..."
+                className="w-full border border-gray-300 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none focus:border-red-500 font-medium"
+                rows={2}
+              />
+            </div>
+
+            <div className="bg-red-50 border border-red-200 p-3 rounded-xl text-2xs text-red-900 space-y-1">
+              <p className="font-bold flex items-center gap-1">
+                <span>⚠️</span> Action is Irreversible:
+              </p>
+              <p>An instant alert will be dispatched to the farmer's registered phone and notification feed. The consignment will be closed.</p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button 
+                onClick={() => setRejectModalData(null)}
+                disabled={isRejecting}
+                className="w-1/3 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-lg hover:bg-gray-200 transition-colors text-xs cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleConfirmReject}
+                disabled={isRejecting}
+                className="w-2/3 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-lg transition-colors shadow-md text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <span>🚫</span> {isRejecting ? 'Rejecting...' : 'Confirm Rejection'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="py-8 px-4 max-w-6xl mx-auto animate-fade-in-up space-y-6">
+    <div className="py-4 px-3 sm:py-8 sm:px-6 max-w-6xl mx-auto animate-fade-in-up space-y-4 sm:space-y-6">
       {renderVoucherModal()}
+      {renderRejectionModal()}
       
       {/* 1. TOP MANAGER HEADER BAR */}
-      <div className="bg-white rounded-2xl shadow-md p-5 md:p-6 border-l-4 border-emerald-600 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl shadow-sm p-4 sm:p-6 border-l-4 border-emerald-600 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center justify-center text-2xl shadow-inner shrink-0">
             🌾
@@ -498,7 +653,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       <div className="bg-white rounded-3xl p-6 md:p-8 shadow-md border border-gray-200 space-y-6">
         
         {/* Section Header & Tab Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
           <div>
             <span className="text-3xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-md">
               Procurement Token Control Center
@@ -506,30 +661,42 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
             <h3 className="text-2xl font-black text-gray-900 mt-1">Mandi Consignment Registry</h3>
           </div>
 
-          {/* 2-Section Tab Switcher */}
-          <div className="flex p-1.5 bg-gray-100 rounded-2xl shrink-0 gap-1">
+          {/* 3-Section Tab Switcher */}
+          <div className="flex p-1.5 bg-gray-100 rounded-2xl shrink-0 gap-1 flex-wrap">
             <button
               onClick={() => setTokenTab('active')}
-              className={`px-5 py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-4 py-2 sm:px-5 sm:py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                 tokenTab === 'active'
-                  ? 'bg-emerald-700 text-white shadow-md scale-105'
+                  ? 'bg-emerald-700 text-white shadow-md scale-102'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
               }`}
             >
               <span>🚛</span>
-              <span>1. Active Tokens ({activeTokens.length})</span>
+              <span>1. Active ({activeTokens.length})</span>
             </button>
 
             <button
               onClick={() => setTokenTab('approved')}
-              className={`px-5 py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-4 py-2 sm:px-5 sm:py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                 tokenTab === 'approved'
-                  ? 'bg-emerald-700 text-white shadow-md scale-105'
+                  ? 'bg-emerald-700 text-white shadow-md scale-102'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
               }`}
             >
               <span>💳</span>
-              <span>2. Tokens Approved for Payments ({approvedTokens.length})</span>
+              <span>2. Approved ({approvedTokens.length})</span>
+            </button>
+
+            <button
+              onClick={() => setTokenTab('rejected')}
+              className={`px-4 py-2 sm:px-5 sm:py-2.5 text-xs font-extrabold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                tokenTab === 'rejected'
+                  ? 'bg-red-700 text-white shadow-md scale-102'
+                  : 'text-gray-600 hover:text-red-700 hover:bg-red-50'
+              }`}
+            >
+              <span>🚫</span>
+              <span>3. Rejected ({rejectedTokens.length})</span>
             </button>
           </div>
         </div>
@@ -546,7 +713,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {activeTokens.map((p) => {
-                    const isSelected = p.token_id === currentActiveProcurement.token_id;
+                    const isSelected = p.token_id === currentActiveProcurement?.token_id;
                     return (
                       <div
                         key={p.token_id}
@@ -571,43 +738,32 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                 </div>
               </div>
             ) : (
-              <div className="p-8 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-3">
-                <span className="text-4xl block">✨</span>
-                <h4 className="font-extrabold text-emerald-950 text-base">Zero Active Tokens in Queue</h4>
-                <p className="text-xs text-emerald-800 max-w-md mx-auto">
-                  All farmer arrivals for this Mandi have been processed or moved to the payment approved section.
-                </p>
-                {approvedTokens.length > 0 && (
-                  <button
-                    onClick={() => setTokenTab('approved')}
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-sm cursor-pointer inline-flex items-center gap-1.5"
-                  >
-                    <span>💳</span>
-                    <span>View Approved Settlements ({approvedTokens.length})</span>
-                  </button>
-                )}
+              <div className="p-8 bg-gray-50 rounded-2xl border border-gray-200 text-center space-y-2">
+                <span className="text-3xl block">🌾</span>
+                <h4 className="font-extrabold text-gray-800 text-sm">No Active Consignments in Mandi Queue</h4>
+                <p className="text-xs text-gray-500">When farmers book slots at this terminal, their active tokens will appear here for live intake.</p>
               </div>
             )}
 
-            {/* 5-STAGE PHYSICAL INTAKE CONSOLE (Rendered strictly when an active token exists) */}
-            {activeTokens.length > 0 && currentActiveProcurement && (
-              <div className="bg-gradient-to-br from-emerald-900 to-teal-950 text-white rounded-3xl p-6 md:p-8 shadow-xl border border-emerald-800 relative overflow-hidden">
+            {/* Selected Active Token Processing Card */}
+            {currentActiveProcurement && (
+              <div className="bg-gradient-to-br from-emerald-900 via-emerald-800 to-slate-900 text-white rounded-3xl p-6 shadow-xl border border-emerald-700 relative overflow-hidden">
                 <div className="relative z-10 space-y-6">
                   
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-800/80 pb-4">
+                  {/* Card Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-700/60 pb-4">
                     <div>
-                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                        Physical Mandi Gate Station
+                      <span className="bg-emerald-700/80 px-2.5 py-0.5 rounded-full text-3xs font-black uppercase tracking-wider text-emerald-200 border border-emerald-500/40">
+                        Live Consignment In-Process
                       </span>
-                      <h3 className="text-xl md:text-2xl font-extrabold text-white mt-0.5 flex items-center gap-2">
-                        <span>🚛</span> Active Station Approvals
+                      <h3 className="text-2xl font-black font-mono text-emerald-300 mt-1">
+                        {currentActiveProcurement.token_id}
                       </h3>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-emerald-300 bg-emerald-800/60 border border-emerald-600 px-3 py-1 rounded-full font-mono font-bold">
-                        Processing: {currentActiveProcurement.token_id}
-                      </span>
+                    <div className="text-left sm:text-right">
+                      <span className="text-xs text-emerald-200 block font-medium">Farmer Contact</span>
+                      <span className="font-bold text-white text-sm">{currentActiveProcurement.farmer_phone}</span>
                     </div>
                   </div>
 
@@ -693,13 +849,27 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                         <p className="text-3xs text-emerald-200/80 mt-1">11.6% Moisture • FAQ Grade</p>
 
                         {currentActiveProcurement.current_stage === 2 && (
-                          <button 
-                            onClick={() => handleAdvanceStage(currentActiveProcurement.token_id, 3, currentActiveProcurement)}
-                            disabled={isAdvancingStage}
-                            className="mt-3 w-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-extrabold py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer"
-                          >
-                            {isAdvancingStage ? '...' : '▶ Pass Quality Lab'}
-                          </button>
+                          <div className="mt-3 flex gap-1.5">
+                            <button 
+                              onClick={() => handleAdvanceStage(currentActiveProcurement.token_id, 3, currentActiveProcurement)}
+                              disabled={isAdvancingStage}
+                              className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-extrabold py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer"
+                            >
+                              {isAdvancingStage ? '...' : '▶ Pass Lab'}
+                            </button>
+                            <button 
+                              onClick={() => setRejectModalData({
+                                tokenId: currentActiveProcurement.token_id,
+                                stage: 3,
+                                defaultReason: 'Moisture content exceeds maximum allowable limit (12% Max FAQ)'
+                              })}
+                              disabled={isAdvancingStage}
+                              className="bg-red-500/80 hover:bg-red-600 text-white font-extrabold px-2 py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer"
+                              title="Reject at Stage 3"
+                            >
+                              🚫 Reject
+                            </button>
+                          </div>
                         )}
                       </div>
 
@@ -717,13 +887,27 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                         <p className="text-3xs text-emerald-200/80 mt-1">Net Weight & 50kg Bags</p>
 
                         {currentActiveProcurement.current_stage === 3 && (
-                          <button 
-                            onClick={() => handleAdvanceStage(currentActiveProcurement.token_id, 4, currentActiveProcurement)}
-                            disabled={isAdvancingStage}
-                            className="mt-3 w-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-extrabold py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer"
-                          >
-                            {isAdvancingStage ? '...' : '▶ Log Weight'}
-                          </button>
+                          <div className="mt-3 flex gap-1.5">
+                            <button 
+                              onClick={() => handleAdvanceStage(currentActiveProcurement.token_id, 4, currentActiveProcurement)}
+                              disabled={isAdvancingStage}
+                              className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-extrabold py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer"
+                            >
+                              {isAdvancingStage ? '...' : '▶ Log Weight'}
+                            </button>
+                            <button 
+                              onClick={() => setRejectModalData({
+                                tokenId: currentActiveProcurement.token_id,
+                                stage: 4,
+                                defaultReason: 'Net grain weight mismatch exceeds standard tolerance threshold'
+                              })}
+                              disabled={isAdvancingStage}
+                              className="bg-red-500/80 hover:bg-red-600 text-white font-extrabold px-2 py-1.5 rounded-lg text-2xs transition shadow-sm cursor-pointer"
+                              title="Reject at Stage 4"
+                            >
+                              🚫 Reject
+                            </button>
+                          </div>
                         )}
                       </div>
 
@@ -829,6 +1013,71 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
           </div>
         )}
 
+        {/* SECTION 3: REJECTED TOKENS (INSPECTION AUDIT LOG) */}
+        {tokenTab === 'rejected' && (
+          <div className="space-y-4 animate-fade-in">
+            {rejectedTokens.length === 0 ? (
+              <div className="p-12 bg-gray-50 rounded-2xl border border-gray-200 text-center space-y-3">
+                <span className="text-4xl block">✅</span>
+                <h4 className="font-extrabold text-gray-900 text-base">No Rejected Consignments</h4>
+                <p className="text-xs text-gray-500 max-w-md mx-auto">
+                  All grain consignments processed through this facility have satisfied standard FAQ quality and weighbridge tolerances.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-red-50/70 text-red-950 uppercase font-bold text-3xs border-b border-red-200">
+                    <tr>
+                      <th className="py-3.5 px-4">Token & Gate Pass</th>
+                      <th className="py-3.5 px-4">Farmer Details</th>
+                      <th className="py-3.5 px-4">Crop & Est. Load</th>
+                      <th className="py-3.5 px-4">Rejection Point</th>
+                      <th className="py-3.5 px-4">Official Reason & Officer</th>
+                      <th className="py-3.5 px-4 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 font-medium">
+                    {rejectedTokens.map((p) => (
+                      <tr key={p.token_id} className="hover:bg-red-50/30 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <span className="font-mono font-bold text-red-900 block">{p.token_id}</span>
+                          <span className="text-3xs text-gray-500 font-mono font-semibold">Pass: {p.gate_pass || 'GP-2026'}</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-extrabold text-gray-900 block">{p.farmer_name}</span>
+                          <span className="text-3xs text-gray-400 font-mono">{p.farmer_phone}</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="text-gray-900 block">{p.crop_type}</span>
+                          <span className="text-3xs text-gray-500 font-bold">{p.estimated_weight_quintals || 45} Qtl</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-900 rounded-full font-extrabold text-3xs uppercase">
+                            <span>Station {p.rejection_stage || 3}:</span>
+                            <span>{p.rejection_stage === 4 ? 'Weighbridge' : 'Quality Lab'}</span>
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 max-w-xs">
+                          <span className="text-red-950 font-bold text-xs block leading-tight">{p.rejection_reason || 'Standards not met'}</span>
+                          <span className="text-3xs text-gray-400 block mt-0.5 font-mono">
+                            By {p.rejected_by || 'Quality Officer'} &bull; {p.rejected_at ? new Date(p.rejected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Logged'}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <span className="bg-red-600 text-white px-2.5 py-1 rounded-md text-3xs font-black uppercase tracking-wider shadow-2xs">
+                            Terminated
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
 
       {/* 3. MANDI STORAGE CAPACITY & QUOTA MANAGEMENT */}
@@ -849,44 +1098,128 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
 
           <div className="space-y-4">
             {(() => {
-              const max = managerCentre.daily_capacity_quintals || 1000;
+              const currentSlots = slotsData[managerCentre._id] || [];
+              const dateBooked = currentSlots.reduce((acc, s) => acc + (s.booked_capacity_quintals || 0), 0);
+              const dateMax = currentSlots.length > 0 
+                ? currentSlots.reduce((acc, s) => acc + (s.max_capacity_quintals || 0), 0)
+                : (managerCentre.daily_capacity_quintals || 1000);
               const maxCeiling = managerCentre.max_designed_capacity_quintals || 2500;
-              const booked = managerCentre.booked_capacity_quintals || 0;
-              const percent = Math.min(100, Math.round((booked / max) * 100));
-              const available = Math.max(0, max - booked);
+              const dateAvail = Math.max(0, dateMax - dateBooked);
+              const percent = Math.min(100, Math.round((dateBooked / dateMax) * 100));
               const isExpanded = expandedCentreId === managerCentre._id;
 
               return (
-                <div key={managerCentre._id} className="space-y-4">
+                <div key={managerCentre._id} className="space-y-6">
                   
-                  {/* Metric Cards */}
+                  {/* UPFRONT TARGET DATE PICKER BAR */}
+                  <div className="bg-emerald-950 text-white p-4 sm:p-5 rounded-2xl border border-emerald-700 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <span className="text-3xs font-extrabold uppercase tracking-widest text-emerald-300 bg-emerald-800/80 px-2.5 py-0.5 rounded-full border border-emerald-600/40">
+                        Target Date Quota Configuration
+                      </span>
+                      <h4 className="text-lg font-black text-white mt-1 flex items-center gap-2">
+                        <span>📅</span> Quota Schedule for {formatDateDisplay(shiftDate)}
+                      </h4>
+                      <p className="text-xs text-emerald-200/80 mt-0.5">
+                        Select any date to inspect booked trucks and set customized intake capacity limits.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* 1-Tap Quick Date Pills */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = todayLocal;
+                          setShiftDate(d);
+                          fetchSlots(managerCentre._id, d);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                          shiftDate === todayLocal
+                            ? 'bg-emerald-400 text-emerald-950 shadow-md scale-102 font-black'
+                            : 'bg-emerald-900/80 text-emerald-200 hover:bg-emerald-800 border border-emerald-700'
+                        }`}
+                      >
+                        ⚡ Today
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date(nowMs + 86400000).toISOString().split('T')[0];
+                          setShiftDate(d);
+                          fetchSlots(managerCentre._id, d);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                          shiftDate === new Date(nowMs + 86400000).toISOString().split('T')[0]
+                            ? 'bg-emerald-400 text-emerald-950 shadow-md scale-102 font-black'
+                            : 'bg-emerald-900/80 text-emerald-200 hover:bg-emerald-800 border border-emerald-700'
+                        }`}
+                      >
+                        📅 Tomorrow
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date(nowMs + 2 * 86400000).toISOString().split('T')[0];
+                          setShiftDate(d);
+                          fetchSlots(managerCentre._id, d);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                          shiftDate === new Date(nowMs + 2 * 86400000).toISOString().split('T')[0]
+                            ? 'bg-emerald-400 text-emerald-950 shadow-md scale-102 font-black'
+                            : 'bg-emerald-900/80 text-emerald-200 hover:bg-emerald-800 border border-emerald-700'
+                        }`}
+                      >
+                        📆 In 2 Days
+                      </button>
+
+                      {/* Calendar Date Picker */}
+                      <input
+                        type="date"
+                        min={todayLocal}
+                        value={shiftDate}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val) {
+                            setShiftDate(val);
+                            fetchSlots(managerCentre._id, val);
+                          }
+                        }}
+                        className="bg-white text-gray-900 font-extrabold px-3 py-1.5 rounded-xl text-xs border border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer shadow-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Metric Cards For Selected Date */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
-                      <span className="text-gray-400 font-semibold block text-3xs uppercase">Facility Name</span>
+                      <span className="text-gray-400 font-semibold block text-3xs uppercase">Facility</span>
                       <span className="font-extrabold text-gray-900 text-sm truncate block mt-0.5">{managerCentre.name}</span>
                     </div>
 
                     <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200">
-                      <span className="text-emerald-700 font-semibold block text-3xs uppercase">Available Capacity</span>
-                      <span className="text-lg font-black text-emerald-950 block mt-0.5">{available.toLocaleString()} Q</span>
+                      <span className="text-emerald-700 font-semibold block text-3xs uppercase">Available on {formatDateDisplay(shiftDate)}</span>
+                      <span className="text-lg font-black text-emerald-950 block mt-0.5">{dateAvail.toLocaleString()} Q</span>
                     </div>
 
                     <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
-                      <span className="text-gray-400 font-semibold block text-3xs uppercase">Booked Load</span>
-                      <span className="text-lg font-black text-gray-900 block mt-0.5">{booked.toLocaleString()} Q</span>
+                      <span className="text-gray-400 font-semibold block text-3xs uppercase">Booked on {formatDateDisplay(shiftDate)}</span>
+                      <span className="text-lg font-black text-gray-900 block mt-0.5">{dateBooked.toLocaleString()} Q</span>
                     </div>
 
-                    <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
-                      <span className="text-gray-400 font-semibold block text-3xs uppercase">Daily Intake Quota</span>
-                      <span className="text-lg font-black text-gray-900 block mt-0.5">{max.toLocaleString()} Q</span>
+                    <div className="p-3.5 bg-emerald-100/60 rounded-2xl border border-emerald-300">
+                      <span className="text-emerald-900 font-bold block text-3xs uppercase">Daily Limit ({formatDateDisplay(shiftDate)})</span>
+                      <span className="text-lg font-black text-emerald-950 block mt-0.5">{dateMax.toLocaleString()} Q</span>
                     </div>
                   </div>
 
-                  {/* Progress Bar */}
+                  {/* Progress Bar for Selected Date */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-2xs font-extrabold">
-                      <span className="text-gray-500">Storage Utilization:</span>
-                      <span className={percent >= 85 ? 'text-red-600' : 'text-emerald-700'}>{percent}% Capacity Used</span>
+                      <span className="text-gray-500">Utilization on {formatDateDisplay(shiftDate)}:</span>
+                      <span className={percent >= 85 ? 'text-red-600' : 'text-emerald-700'}>{percent}% Capacity Booked ({dateBooked} Q / {dateMax} Q)</span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-3.5 overflow-hidden p-0.5 border border-gray-200 shadow-inner">
                       <div 
@@ -901,10 +1234,12 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                   {/* Controls Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                     
-                    {/* Manual Quota Modifier */}
+                    {/* Manual Quota Modifier for Selected Date */}
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-inner space-y-2">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-extrabold text-gray-700">Adjust Daily Limit:</span>
+                        <span className="font-extrabold text-gray-700">
+                          Set Daily Limit for {formatDateDisplay(shiftDate)}:
+                        </span>
                         <span className="text-3xs text-gray-400 font-mono">Max Silo: {maxCeiling} Q</span>
                       </div>
 
@@ -912,7 +1247,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                         <div className="relative flex-1">
                           <input 
                             type="number"
-                            placeholder={max.toString()}
+                            placeholder={dateMax.toString()}
                             value={inputCapacities[managerCentre._id] !== undefined ? inputCapacities[managerCentre._id] : ''}
                             onChange={(e) => setInputCapacities({ ...inputCapacities, [managerCentre._id]: e.target.value })}
                             className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg font-bold text-gray-800 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-8"
@@ -921,24 +1256,24 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                         </div>
 
                         <button 
-                          onClick={() => handleSetCapacity(managerCentre._id)}
+                          onClick={() => handleSetCapacity(managerCentre._id, shiftDate)}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-lg text-xs shadow-sm transition-all active:scale-95 cursor-pointer whitespace-nowrap"
                         >
-                          Set Limit
+                          Set Limit for {formatDateDisplay(shiftDate)}
                         </button>
                       </div>
 
                       <p className="text-3xs text-gray-400 font-medium">
-                        Allowed: <strong className="text-gray-600">{booked} Q</strong> (Booked) – <strong className="text-emerald-700">{maxCeiling} Q</strong> (Silo Ceiling)
+                        Allowed on {formatDateDisplay(shiftDate)}: <strong className="text-gray-600">{dateBooked} Q</strong> (Booked) – <strong className="text-emerald-700">{maxCeiling} Q</strong> (Silo Ceiling)
                       </p>
                     </div>
 
                     {/* Diversion & Shifts Action */}
                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-inner flex flex-col justify-between gap-3">
                       <div>
-                        <span className="font-extrabold text-gray-700 text-xs block mb-1">Mandi Traffic Controls:</span>
+                        <span className="font-extrabold text-gray-700 text-xs block mb-1">Shift Breakdown ({formatDateDisplay(shiftDate)}):</span>
                         <p className="text-2xs text-gray-500">
-                          Configure 3-hour shift allocations or activate diversion advisories.
+                          Fine-tune individual 3-hour shift allocations for {formatDateDisplay(shiftDate)} or divert traffic.
                         </p>
                       </div>
 
@@ -1019,7 +1354,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                                 Cancel
                               </button>
                               <button 
-                                onClick={() => handleSaveShiftQuotas(managerCentre._id)}
+                                onClick={() => handleSaveShiftQuotas(managerCentre._id, shiftDate)}
                                 disabled={!isShiftQuotaValid || isSavingShifts}
                                 className={`text-xs font-bold px-4 py-1.5 rounded-lg transition-all shadow-md cursor-pointer ${
                                   isShiftQuotaValid 
@@ -1033,6 +1368,47 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                           )}
                         </div>
                       </div>
+
+                      {/* DYNAMIC LIVE QUINTAL ALLOCATION BALANCE INDICATOR */}
+                      {isEditingShifts && (() => {
+                        const currentSum = Object.values(shiftInputs).reduce((acc, val) => acc + (Number(val) || 0), 0);
+                        const remaining = dateMax - currentSum;
+
+                        return (
+                          <div className={`p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-sm ${
+                            remaining === 0
+                              ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
+                              : remaining > 0
+                                ? 'bg-amber-50 border-amber-300 text-amber-950'
+                                : 'bg-red-50 border-red-400 text-red-950 animate-pulse'
+                          }`}>
+                            <div className="flex items-center gap-2 font-black">
+                              {remaining === 0 ? (
+                                <>
+                                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0">✓</span>
+                                  <span>0 Q Left — Perfectly Balanced for {formatDateDisplay(shiftDate)}!</span>
+                                </>
+                              ) : remaining > 0 ? (
+                                <>
+                                  <span className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs shrink-0 animate-bounce">⏳</span>
+                                  <span>{remaining.toLocaleString()} Q left to be allocated</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-xs shrink-0">⚠️</span>
+                                  <span>{Math.abs(remaining).toLocaleString()} Q Over-Allocated! (Exceeds {dateMax} Q daily limit)</span>
+                                </>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 text-3xs font-mono font-extrabold">
+                              <span className="bg-white/80 px-2.5 py-1 rounded-lg border border-gray-200">
+                                Allocated: <strong className={remaining === 0 ? 'text-emerald-700' : remaining > 0 ? 'text-amber-700' : 'text-red-700'}>{currentSum} Q</strong> / {dateMax} Q
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {centreSlots.length === 0 ? (
                         <p className="text-xs text-gray-400 italic">Loading shift quotas...</p>

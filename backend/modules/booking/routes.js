@@ -232,6 +232,7 @@ router.post('/create', async (req, res) => {
       { token_id: tokenId },
       {
         token_id: tokenId,
+        farmer_aadhar: farmer_aadhar.trim(),
         farmer_name: resolvedFarmerName,
         farmer_phone: resolvedFarmerPhone,
         crop_type: crop_type || 'Wheat (Sharbati A-Grade)',
@@ -240,7 +241,6 @@ router.post('/create', async (req, res) => {
         slot_name: slot.slot_name,
         slot_date: bookingDate,
         estimated_weight_quintals: weight,
-
         updated_at: new Date()
       },
       { upsert: true, new: true }

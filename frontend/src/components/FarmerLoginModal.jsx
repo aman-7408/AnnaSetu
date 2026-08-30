@@ -202,15 +202,31 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
               </div>
 
               {/* Test Data Minimal Helper Box */}
-              <div className="flex items-center justify-between text-xs bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">
-                <span className="font-semibold text-gray-500">Test Data:</span>
-                <button
-                  type="button"
-                  onClick={() => setAadhar('111122223333')}
-                  className="font-mono font-bold text-brand hover:text-brand-dark hover:underline bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-2xs transition-all cursor-pointer"
-                >
-                  111122223333 (Aman Kumar)
-                </button>
+              <div className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200 text-xs space-y-1.5">
+                <span className="font-semibold text-gray-500 block text-3xs uppercase tracking-wider">Test Farmer Aadhaar (Universal OTP: 123456):</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setAadhar('111122223333')}
+                    className="font-mono text-xs font-bold text-brand hover:underline bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-2xs cursor-pointer"
+                  >
+                    111122223333 (Aman)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAadhar('222233334444')}
+                    className="font-mono text-xs font-bold text-brand hover:underline bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-2xs cursor-pointer"
+                  >
+                    222233334444 (Anusrita)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAadhar('333344445555')}
+                    className="font-mono text-xs font-bold text-brand hover:underline bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-2xs cursor-pointer"
+                  >
+                    333344445555 (Anurag)
+                  </button>
+                </div>
               </div>
 
               <button

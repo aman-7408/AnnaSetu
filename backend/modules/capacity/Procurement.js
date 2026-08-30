@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const procurementSchema = new mongoose.Schema({
   token_id: { type: String, required: true, unique: true },
+  farmer_aadhar: { type: String, required: true, default: '111122223333' },
   farmer_name: { type: String, required: true, default: 'Aman Kumar' },
   farmer_phone: { type: String, default: '+91 98765 43210' },
   crop_type: { type: String, default: 'Wheat (Sharbati A-Grade)' },
@@ -33,6 +34,13 @@ const procurementSchema = new mongoose.Schema({
   gross_payout: { type: Number, default: 0 },
   j_form_number: { type: String, default: '' },
   approved_at: { type: Date },
+
+  // Status & Rejection Tracking
+  status: { type: String, default: 'in_progress', enum: ['in_progress', 'completed', 'rejected'] },
+  rejection_stage: { type: Number },
+  rejection_reason: { type: String, default: '' },
+  rejected_at: { type: Date },
+  rejected_by: { type: String, default: 'Mandi Quality Officer' },
 
   updated_at: { type: Date, default: Date.now }
 });

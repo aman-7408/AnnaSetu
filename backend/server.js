@@ -1,3 +1,10 @@
+const dns = require('dns');
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (dnsErr) {
+  console.warn('DNS server fallback warning:', dnsErr.message);
+}
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -28,9 +35,12 @@ app.get('/', (req, res) => {
 
 // Connect to MongoDB Atlas
 if (process.env.MONGODB_URI) {
-  mongoose.connect(process.env.MONGODB_URI)
+  mongoose.connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 15000,
+    connectTimeoutMS: 15000
+  })
     .then(() => {
-      console.log('MongoDB Connected to Atlas Successfully!');
+      console.log('MongoDB Connected to Atlas Successfully (DNS: Fast Public Resolvers)!');
     })
     .catch((err) => {
       console.error('MongoDB Atlas Connection Error:', err.message);

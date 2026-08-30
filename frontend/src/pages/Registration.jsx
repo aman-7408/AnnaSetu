@@ -307,10 +307,10 @@ export default function Registration() {
         </div>
       )}
 
-      <div className="py-12 px-4 max-w-xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg p-6 md:p-8 border-t-4 border-brand">
+      <div className="py-4 px-3 sm:py-10 sm:px-4 max-w-xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-8 border-t-4 border-brand">
           
-          <h2 className="text-3xl font-extrabold text-gray-800 mb-6 text-center">New Farmer Registration</h2>
+          <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-4 sm:mb-6 text-center">New Farmer Registration</h2>
           
           {error && (
             <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6 border border-red-200 text-sm font-medium">
@@ -436,9 +436,12 @@ export default function Registration() {
                 </button>
               )}
               
-              <p className="text-xs text-gray-400 text-center mt-4">
-                Only for testing, use Aadhar: 111122223333 and OTP: 123456
-              </p>
+              <div className="mt-5 pt-3 border-t border-gray-100 text-center text-[11px] text-gray-400 space-y-1">
+                <p className="font-bold text-gray-500">Test Aadhaar Numbers (Universal OTP: 123456):</p>
+                <p>• <span className="font-mono font-bold text-gray-700">111122223333</span> — Aman Kumar (Bihar)</p>
+                <p>• <span className="font-mono font-bold text-gray-700">222233334444</span> — Anusrita Deb (Tripura)</p>
+                <p>• <span className="font-mono font-bold text-gray-700">333344445555</span> — Anurag Ojha (UP)</p>
+              </div>
             </div>
           )}
 
@@ -534,9 +537,12 @@ export default function Registration() {
                 {isLoading ? 'Processing...' : 'Complete Registration'}
               </button>
               
-              <p className="text-xs text-gray-400 text-center mt-4">
-                Only for testing, use Bank Account: 000012345678 and IFSC: SBIN0001234
-              </p>
+              <div className="mt-5 pt-3 border-t border-gray-100 text-center text-[11px] text-gray-400 space-y-1">
+                <p className="font-bold text-gray-500">Test Linked Bank Details (By Farmer):</p>
+                <p>• <strong>Aman Kumar:</strong> A/C <span className="font-mono font-bold text-gray-700">000012345678</span> • IFSC <span className="font-mono font-bold text-gray-700">SBIN0001234</span></p>
+                <p>• <strong>Anusrita Deb:</strong> A/C <span className="font-mono font-bold text-gray-700">100023456789</span> • IFSC <span className="font-mono font-bold text-gray-700">SBIN0000017</span></p>
+                <p>• <strong>Anurag Ojha:</strong> A/C <span className="font-mono font-bold text-gray-700">200034567890</span> • IFSC <span className="font-mono font-bold text-gray-700">PUNB0024500</span></p>
+              </div>
             </form>
           )}
 

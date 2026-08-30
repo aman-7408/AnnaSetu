@@ -47,6 +47,27 @@ const TEMPLATES = {
     category: 'queue'
   }),
 
+  quality_passed: (data) => ({
+    title: 'Quality Lab Test Passed!',
+    message: `Grain lot verified: ${data.grade || 'Grade A FAQ'} with ${data.moisture || '11.6%'} moisture content.`,
+    action_hint: 'Proceed to Weighbridge station for gross weight calculation.',
+    category: 'queue'
+  }),
+
+  weighed: (data) => ({
+    title: 'Weighbridge Weight Confirmed',
+    message: `Net Grain Weight: ${data.net_weight || '45.20 Quintals'} (${data.gunny_bags || '90 Bags'} packaged).`,
+    action_hint: 'Proceed to Mandi Manager desk for J-Form approval and DBT payout release.',
+    category: 'queue'
+  }),
+
+  consignment_rejected: (data) => ({
+    title: '⚠️ Mandi Consignment Rejected',
+    message: `Consignment #${data.token_id || ''} rejected at ${data.stage_name || 'Inspection'}. Reason: ${data.reason || 'Did not meet official Mandi standards'}.`,
+    action_hint: 'Please consult the Mandi In-Charge desk at the gate to collect your tractor gate pass.',
+    category: 'queue'
+  }),
+
   payment_initiated: (data) => ({
     title: 'J-Form Approved — DBT Processing',
     message: `J-Form #${data.j_form_no || 'JF-2026-98124'} generated for Rs. ${data.amount || '1,02,830'} (${data.quantity || '45.20 Quintals'} Grade A Wheat @ Rs. 2,275 MSP).`,

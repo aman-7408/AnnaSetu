@@ -154,12 +154,13 @@ router.put('/centres/:id/slots', async (req, res) => {
   }
 });
 
-// 4. ADMIN: MANUAL CAPACITY MODIFIER WITH SAFETY SHIELD
+// 4. ADMIN: MANUAL CAPACITY MODIFIER WITH TARGET DATE SUPPORT & SAFETY SHIELD
 router.put('/centres/:id/capacity', async (req, res) => {
   try {
     const { id } = req.params;
-    const { daily_capacity_quintals } = req.body;
+    const { daily_capacity_quintals, date } = req.body;
     const newCapacity = Number(daily_capacity_quintals);
+    const targetDate = date || new Date().toISOString().split('T')[0];
 
     if (!newCapacity || newCapacity <= 0) {
       return res.status(400).json({ error: 'Please provide a valid positive capacity limit.' });
@@ -169,27 +170,57 @@ router.put('/centres/:id/capacity', async (req, res) => {
     if (!centre) return res.status(404).json({ error: 'Centre not found' });
 
     const ceiling = centre.max_designed_capacity_quintals || 2500;
-    const floor = centre.booked_capacity_quintals || 0;
+
+    // Check existing booked load specifically for the target date
+    const targetDateSlots = await Slot.find({ centre_id: id, date: targetDate });
+    const bookedForDate = targetDateSlots.reduce((acc, s) => acc + (s.booked_capacity_quintals || 0), 0);
 
     if (newCapacity > ceiling) {
       return res.status(400).json({ error: `Exceeds physical silo ceiling (${ceiling} Q) for ${centre.name}.` });
     }
-    if (newCapacity < floor) {
-      return res.status(400).json({ error: `Cannot set limit lower than currently booked grain (${floor} Q).` });
+    if (newCapacity < bookedForDate) {
+      return res.status(400).json({ 
+        error: `Safety Block: Cannot set limit on ${targetDate} lower than already booked grain (${bookedForDate} Q).` 
+      });
     }
 
-    centre.daily_capacity_quintals = newCapacity;
-    await centre.save();
-
-    // Auto-adjust default slots proportionally
-    const slotCap = Math.round(newCapacity / 3);
     const today = new Date().toISOString().split('T')[0];
-    await Slot.updateMany(
-      { centre_id: id, date: today },
-      { max_capacity_quintals: slotCap }
-    );
+    if (targetDate === today) {
+      centre.daily_capacity_quintals = newCapacity;
+      await centre.save();
+    }
 
-    res.json({ success: true, message: `Capacity set to ${newCapacity} Q`, centre });
+    // Proportioned shift quotas across the 3 daily shifts for this target date
+    const slotCap = Math.round(newCapacity / 3);
+    const slotConfigs = [
+      { code: 'SLOT_1_MORNING', name: 'Slot 1: Morning (09:00 AM - 12:00 PM)' },
+      { code: 'SLOT_2_AFTERNOON', name: 'Slot 2: Afternoon (12:00 PM - 03:00 PM)' },
+      { code: 'SLOT_3_EVENING', name: 'Slot 3: Evening (03:00 PM - 06:00 PM)' }
+    ];
+
+    for (const sc of slotConfigs) {
+      await Slot.findOneAndUpdate(
+        { centre_id: id, date: targetDate, slot_code: sc.code },
+        { 
+          max_capacity_quintals: slotCap,
+          centre_name: centre.name,
+          slot_name: sc.name
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    const updatedSlots = await Slot.find({ centre_id: id, date: targetDate }).sort({ slot_code: 1 });
+
+    res.json({ 
+      success: true, 
+      message: `Capacity limit for ${targetDate} set to ${newCapacity} Q (${slotCap} Q per shift)`,
+      date: targetDate,
+      daily_capacity_quintals: newCapacity,
+      booked_capacity_quintals: bookedForDate,
+      slots: updatedSlots,
+      centre 
+    });
   } catch (err) {
     console.error('Error updating capacity:', err);
     res.status(500).json({ error: 'Failed to update capacity' });
@@ -223,10 +254,13 @@ router.put('/centres/:id/divert', async (req, res) => {
 // 6. PROCUREMENT STAGE TRACKING ENDPOINTS
 router.get('/procurements', async (req, res) => {
   try {
-    const { centre_name } = req.query;
+    const { centre_name, farmer_aadhar } = req.query;
     let query = {};
     if (centre_name) {
       query.centre_name = centre_name;
+    }
+    if (farmer_aadhar) {
+      query.farmer_aadhar = farmer_aadhar.trim();
     }
     const procurements = await Procurement.find(query).sort({ updated_at: -1 });
     res.json({ success: true, count: procurements.length, procurements });
@@ -239,8 +273,18 @@ router.get('/procurements', async (req, res) => {
 // Fetch single procurement by token
 router.get('/procurements/:tokenId', async (req, res) => {
   try {
+    const { farmer_aadhar } = req.query;
     const proc = await Procurement.findOne({ token_id: req.params.tokenId });
     if (!proc) return res.status(404).json({ error: 'Token not found' });
+    
+    // Privacy barrier: If farmer_aadhar is provided, verify ownership
+    if (farmer_aadhar && proc.farmer_aadhar && proc.farmer_aadhar !== farmer_aadhar.trim()) {
+      return res.status(403).json({ 
+        error: 'Access Restricted: This token is not registered to your Aadhaar account.',
+        is_unauthorized: true
+      });
+    }
+
     res.json({ success: true, procurement: proc });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -280,16 +324,50 @@ router.post('/procurements/advance-stage', async (req, res) => {
 
     await proc.save();
 
-    // Trigger Module 6 DBT Payment Creation & In-App Alerts
+    // Trigger Multi-Stage Real-Time Notifications & Module 6 DBT Payment Creation
     try {
+      // Authoritatively resolve active farmer Aadhaar & profile
+      let farmerAadhar = proc.farmer_aadhar;
+      if (!farmerAadhar || farmerAadhar === '111122223333') {
+        const associatedBooking = await Booking.findOne({ token_id: proc.token_id });
+        if (associatedBooking && associatedBooking.farmer_aadhar) {
+          farmerAadhar = associatedBooking.farmer_aadhar;
+          proc.farmer_aadhar = farmerAadhar;
+          await proc.save();
+        }
+      }
+      if (!farmerAadhar) farmerAadhar = '111122223333';
+
       if (target_stage === 2) {
         await sendNotification({
-          farmer_id: '111122223333',
+          farmer_id: farmerAadhar,
           recipient_name: proc.farmer_name || 'Farmer',
           recipient_phone: proc.farmer_phone || '',
           trigger_event: 'queue_update',
           metadata: {
             gate_pass: proc.gate_pass || 'GP-2026-8831'
+          }
+        });
+      } else if (target_stage === 3) {
+        await sendNotification({
+          farmer_id: farmerAadhar,
+          recipient_name: proc.farmer_name || 'Farmer',
+          recipient_phone: proc.farmer_phone || '',
+          trigger_event: 'quality_passed',
+          metadata: {
+            grade: proc.grade || 'Grade A FAQ',
+            moisture: `${proc.moisture_percent || 11.6}%`
+          }
+        });
+      } else if (target_stage === 4) {
+        await sendNotification({
+          farmer_id: farmerAadhar,
+          recipient_name: proc.farmer_name || 'Farmer',
+          recipient_phone: proc.farmer_phone || '',
+          trigger_event: 'weighed',
+          metadata: {
+            net_weight: `${proc.net_weight_quintals || 45.20} Quintals`,
+            gunny_bags: `${proc.gunny_bags || 90} Bags`
           }
         });
       } else if (target_stage === 5) {
@@ -303,11 +381,11 @@ router.post('/procurements/advance-stage', async (req, res) => {
           console.warn('Booking status update error:', bookErr.message);
         }
 
-        // Auto-create/sync DBT Payment record in Module 6
+        // Auto-create/sync DBT Payment record dynamically in Module 6
         try {
-          const farmerRec = await Farmer.findOne({ aadhar_number: '111122223333' });
-          const bankAcc = farmerRec?.bank_account_number || '000012345678';
-          const bankIfsc = farmerRec?.bank_ifsc || 'SBIN0001234';
+          const farmerRec = await Farmer.findOne({ aadhar_number: farmerAadhar });
+          const bankAcc = farmerRec?.bank_account_number || (farmerAadhar === '222233334444' ? '100023456789' : farmerAadhar === '333344445555' ? '200034567890' : '000012345678');
+          const bankIfsc = farmerRec?.bank_ifsc || (farmerAadhar === '222233334444' ? 'SBIN0000017' : farmerAadhar === '333344445555' ? 'PUNB0024500' : 'SBIN0001234');
           const randomUtr = `UTR-2026-PFMS-${Math.floor(100000 + Math.random() * 900000)}`;
           const randomPmt = `PMT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -317,9 +395,9 @@ router.post('/procurements/advance-stage', async (req, res) => {
               payment_id: randomPmt,
               transaction_utr: randomUtr,
               token_id: proc.token_id,
-              farmer_aadhar: '111122223333',
-              farmer_name: proc.farmer_name || 'Aman Kumar',
-              farmer_phone: proc.farmer_phone || '9876543210',
+              farmer_aadhar: farmerAadhar,
+              farmer_name: proc.farmer_name || farmerRec?.name || 'Registered Kisan',
+              farmer_phone: proc.farmer_phone || farmerRec?.phone || '9876543210',
               crop_type: proc.crop_type || 'Wheat (Sharbati A-Grade)',
               net_weight_quintals: proc.net_weight_quintals || 45.20,
               msp_rate: proc.msp_rate || 2275,
@@ -337,7 +415,7 @@ router.post('/procurements/advance-stage', async (req, res) => {
         }
 
         await sendNotification({
-          farmer_id: '111122223333',
+          farmer_id: farmerAadhar,
           recipient_name: proc.farmer_name || 'Farmer',
           recipient_phone: proc.farmer_phone || '',
           trigger_event: 'payment_initiated',
@@ -345,6 +423,18 @@ router.post('/procurements/advance-stage', async (req, res) => {
             amount: (proc.gross_payout || 102830).toLocaleString('en-IN'),
             quantity: `${proc.net_weight_quintals || 45.2} Quintals`,
             j_form_no: proc.j_form_number || 'JF-2026-98124'
+          }
+        });
+
+        await sendNotification({
+          farmer_id: farmerAadhar,
+          recipient_name: proc.farmer_name || 'Farmer',
+          recipient_phone: proc.farmer_phone || '',
+          trigger_event: 'payment_credited',
+          metadata: {
+            amount: (proc.gross_payout || 102830).toLocaleString('en-IN'),
+            bank_name: 'Registered Bank Account',
+            account_last4: '••••'
           }
         });
       }
@@ -356,6 +446,76 @@ router.post('/procurements/advance-stage', async (req, res) => {
   } catch (err) {
     console.error('Error advancing procurement stage:', err);
     res.status(500).json({ error: 'Failed to advance stage' });
+  }
+});
+
+// Reject Token at Stage 3 (Quality Lab) or Stage 4 (Weighbridge)
+router.post('/procurements/reject', async (req, res) => {
+  try {
+    const { token_id, stage, reason, officer_name } = req.body;
+    let proc = await Procurement.findOne({ token_id });
+
+    if (!proc) {
+      return res.status(404).json({ error: 'Token not found in procurement registry' });
+    }
+
+    const rejectionStageNum = Number(stage) || 3;
+    const defaultReason = rejectionStageNum === 3 
+      ? 'Moisture content exceeds maximum allowable limit (12% Max FAQ)' 
+      : 'Net grain weight mismatch exceeds standard tolerance threshold';
+
+    proc.status = 'rejected';
+    proc.rejection_stage = rejectionStageNum;
+    proc.rejection_reason = reason || defaultReason;
+    proc.rejected_at = new Date();
+    proc.rejected_by = officer_name || 'Mandi Quality Officer';
+    proc.updated_at = new Date();
+    await proc.save();
+
+    // Mark associated Booking status to rejected
+    try {
+      await Booking.findOneAndUpdate({ token_id }, { status: 'rejected' });
+    } catch (bErr) {
+      console.warn('Booking reject update error:', bErr.message);
+    }
+
+    // Resolve farmer Aadhaar dynamically
+    let farmerAadhar = proc.farmer_aadhar;
+    if (!farmerAadhar || farmerAadhar === '111122223333') {
+      const associatedBooking = await Booking.findOne({ token_id: proc.token_id });
+      if (associatedBooking && associatedBooking.farmer_aadhar) {
+        farmerAadhar = associatedBooking.farmer_aadhar;
+        proc.farmer_aadhar = farmerAadhar;
+        await proc.save();
+      }
+    }
+    if (!farmerAadhar) farmerAadhar = '111122223333';
+
+    // Send instant high-priority notification to farmer
+    try {
+      await sendNotification({
+        farmer_id: farmerAadhar,
+        recipient_name: proc.farmer_name || 'Farmer',
+        recipient_phone: proc.farmer_phone || '',
+        trigger_event: 'consignment_rejected',
+        metadata: {
+          token_id: proc.token_id,
+          stage_name: rejectionStageNum === 3 ? 'Stage 3 (Quality Lab Assaying)' : 'Stage 4 (Weighbridge)',
+          reason: proc.rejection_reason
+        }
+      });
+    } catch (notifErr) {
+      console.warn('Rejection notification dispatch error:', notifErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `Consignment #${token_id} has been marked REJECTED at Stage ${rejectionStageNum}.`,
+      procurement: proc
+    });
+  } catch (err) {
+    console.error('Error rejecting procurement consignment:', err);
+    res.status(500).json({ error: 'Failed to reject consignment' });
   }
 });
 

@@ -106,14 +106,26 @@ export default function SlotBooking() {
   const tzOffset = new Date().getTimezoneOffset() * 60000;
   const nowMs = Date.now() - tzOffset;
   const todayLocal = new Date(nowMs).toISOString().split('T')[0];
+  const tomorrowLocal = new Date(nowMs + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const dayAfterLocal = new Date(nowMs + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const maxDateLocal = new Date(nowMs + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const formatDateDisplay = (isoStr) => {
+    if (!isoStr) return 'DD/MM/YYYY';
+    try {
+      const [yyyy, mm, dd] = isoStr.split('-');
+      return `${dd}/${mm}/${yyyy}`;
+    } catch {
+      return isoStr;
+    }
+  };
 
   const [activeTab, setActiveTab] = useState('book'); // 'book' | 'passes'
   const [currentStep, setCurrentStep] = useState(1); // 1: Farmer & Mandi, 2: Shift, 3: Crop & Weight
 
   // Centres & Live Slots Data
   const [centres, setCentres] = useState(FALLBACK_CENTRES);
-  const [slots, setSlots] = useState(() => getDefaultSlotsForCentre(FALLBACK_CENTRES[0]));
+  const [slots, setSlots] = useState(() => getDefaultSlotsForCentre(FALLBACK_CENTRES[0], tomorrowLocal));
   const [loadingCentres, setLoadingCentres] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
 
@@ -125,24 +137,24 @@ export default function SlotBooking() {
         const parsed = JSON.parse(sessionRaw);
         if (parsed && parsed.aadhar) {
           return {
-            name: parsed.name || 'Aman Kumar',
+            name: parsed.name || 'Registered Kisan',
             aadhar: parsed.aadhar,
-            phone: parsed.phone || '9876543210',
-            land_size: parsed.land_size || '5.0 Acres',
-            plot_number: parsed.plot_number || 'B-452',
-            address: parsed.address || 'Bhojpur, Bihar'
+            phone: parsed.phone || '---',
+            land_size: parsed.land_size || '---',
+            plot_number: parsed.plot_number || '---',
+            address: parsed.address || '---'
           };
         }
       }
       const savedAadhaar = localStorage.getItem('farmer_aadhar');
       if (savedAadhaar) {
         return {
-          name: localStorage.getItem('farmer_name') || 'Aman Kumar',
+          name: localStorage.getItem('farmer_name') || 'Registered Kisan',
           aadhar: savedAadhaar,
-          phone: '9876543210',
-          land_size: '5.0 Acres',
-          plot_number: 'B-452',
-          address: 'Bhojpur, Bihar'
+          phone: '---',
+          land_size: '---',
+          plot_number: '---',
+          address: '---'
         };
       }
     } catch {}
@@ -151,7 +163,7 @@ export default function SlotBooking() {
   const [aadharInput, setAadharInput] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [selectedCentre, setSelectedCentre] = useState(FALLBACK_CENTRES[0]);
-  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedDate, setSelectedDate] = useState(tomorrowLocal);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [selectedCrop, setSelectedCrop] = useState(CROPS[0]);
   const [weightQuintals, setWeightQuintals] = useState('45');
@@ -185,12 +197,12 @@ export default function SlotBooking() {
             savedAadhaar = parsed.aadhar || '';
             if (savedAadhaar) {
               setSelectedFarmer({
-                name: parsed.name || 'Aman Kumar',
+                name: parsed.name || 'Registered Kisan',
                 aadhar: parsed.aadhar,
-                phone: parsed.phone || '9876543210',
-                land_size: parsed.land_size || '5.0 Acres',
-                plot_number: parsed.plot_number || 'B-452',
-                address: parsed.address || 'Bhojpur, Bihar'
+                phone: parsed.phone || '---',
+                land_size: parsed.land_size || '---',
+                plot_number: parsed.plot_number || '---',
+                address: parsed.address || '---'
               });
               syncFarmerPassesFromServer(savedAadhaar);
             }
@@ -440,7 +452,12 @@ export default function SlotBooking() {
         });
       }
 
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error('Connection timeout. Please check your network and tap Confirm Slot again.');
+      }
       
       if (!res.ok) {
         throw new Error(data.error || 'Failed to secure slot. Please try again.');
@@ -449,7 +466,7 @@ export default function SlotBooking() {
       if (data.success && data.booking) {
         bookingSaved = data.booking;
       } else {
-        throw new Error('Server returned an invalid response.');
+        throw new Error(data.error || 'Mandi server returned an invalid response.');
       }
 
       setActivePassModal(bookingSaved);
@@ -970,58 +987,46 @@ export default function SlotBooking() {
 
           {/* STEP 1: AUTHENTICATED FARMER PROFILE & MANDI SELECTION */}
           {currentStep === 1 && (
-            <div className="space-y-6 animate-fade-in">
-              {/* Authenticated Farmer Profile Card */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <span className="p-1.5 bg-emerald-100 text-emerald-800 rounded-lg text-sm">👤</span>
-                    Authenticated Farmer Profile
-                  </h2>
-                  <span className="text-xs font-bold px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    UIDAI Aadhaar Verified
-                  </span>
-                </div>
-
-                {/* Verified Farmer Details Banner */}
-                <div className="p-5 bg-gradient-to-r from-emerald-50/90 via-white to-emerald-50/50 border border-emerald-200 rounded-2xl flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-emerald-700 text-white flex items-center justify-center font-extrabold text-2xl shadow-md shrink-0">
-                      {selectedFarmer.name?.charAt(0) || 'A'}
+            <div className="space-y-4 sm:space-y-6 animate-fade-in">
+              {/* Authenticated Farmer Profile Card (Mobile Compact & Desktop Elegant) */}
+              <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-emerald-900 text-white rounded-2xl p-3.5 sm:p-5 shadow-md border border-emerald-700/60">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-700/80 border border-emerald-500/50 text-white flex items-center justify-center font-black text-lg sm:text-xl shadow-inner shrink-0">
+                      {selectedFarmer.name?.charAt(0) || 'K'}
                     </div>
-                    <div>
-                      <h3 className="font-extrabold text-gray-900 text-lg flex items-center gap-2">
-                        {selectedFarmer.name}
-                        <span className="text-emerald-700 text-xs font-bold bg-emerald-100 px-2 py-0.5 rounded">
-                          ✓ Active Kisan Session
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="font-extrabold text-white text-sm sm:text-base truncate">
+                          {selectedFarmer.name}
+                        </h3>
+                        <span className="bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full">
+                          ✓ Verified
                         </span>
-                      </h3>
-                      <p className="text-xs text-gray-600 mt-0.5">
-                        Aadhaar: <span className="font-mono font-bold text-gray-800">{selectedFarmer.aadhar}</span> • Phone: <span className="font-medium text-gray-800">{selectedFarmer.phone}</span>
-                      </p>
-                      <p className="text-2xs text-gray-500 mt-0.5">
-                        Address: {selectedFarmer.address}
+                      </div>
+                      <p className="text-[11px] sm:text-xs text-emerald-200/90 font-mono mt-0.5 truncate">
+                        Aadhaar: •••• •••• {selectedFarmer.aadhar?.slice(-4) || '••••'} • {selectedFarmer.phone || '---'}
                       </p>
                     </div>
                   </div>
 
-                  <div className="text-right text-xs bg-white p-3 rounded-xl border border-emerald-200 shadow-2xs">
-                    <span className="text-gray-400 block text-2xs uppercase tracking-wider font-semibold">Registered Land Holding</span>
-                    <span className="font-extrabold text-emerald-900 text-sm">{selectedFarmer.land_size}</span>
-                    <span className="text-2xs text-gray-500 block">Plot #{selectedFarmer.plot_number}</span>
+                  <div className="text-right shrink-0 bg-white/10 backdrop-blur-sm px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-white/15">
+                    <span className="text-[9px] sm:text-[10px] uppercase text-emerald-300 font-extrabold tracking-wider block">Holding</span>
+                    <span className="font-black text-white text-xs sm:text-sm">{selectedFarmer.land_size || 'N/A'}</span>
                   </div>
                 </div>
               </div>
 
               {/* Mandi Selection Card */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <span className="p-1.5 bg-amber-100 text-amber-800 rounded-lg text-sm">🏢</span>
-                    Select Procurement Mandi Terminal (Live Capacity Feed)
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-2 border-b border-gray-100">
+                  <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <span className="p-1 sm:p-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs sm:text-sm">🏢</span>
+                    Select Procurement Mandi
                   </h2>
-                  <span className="text-xs font-bold text-gray-500">{centres.length} National Centres Active</span>
+                  <span className="text-[11px] sm:text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                    {centres.length} Terminals Live
+                  </span>
                 </div>
 
                 {loadingCentres ? (
@@ -1043,55 +1048,55 @@ export default function SlotBooking() {
                         <div
                           key={centre._id || centre.name}
                           onClick={() => setSelectedCentre(centre)}
-                          className={`cursor-pointer rounded-xl p-5 border-2 transition-all relative flex flex-col md:flex-row md:items-center gap-4 ${
+                          className={`cursor-pointer rounded-xl p-3.5 sm:p-5 border-2 transition-all relative flex flex-col md:flex-row md:items-center gap-3 sm:gap-4 ${
                             isSelected
-                              ? 'border-brand bg-emerald-50/50 shadow-md ring-2 ring-emerald-300'
+                              ? 'border-brand bg-emerald-50/60 shadow-md ring-2 ring-emerald-300'
                               : 'border-gray-200 hover:border-gray-300 bg-white'
                           }`}
                         >
                           {/* Selection Checkmark */}
                           {isSelected && (
-                            <div className="absolute top-3 right-3 md:top-1/2 md:-translate-y-1/2 md:-left-3 md:right-auto w-6 h-6 bg-brand text-white rounded-full flex items-center justify-center text-sm font-bold shadow-md ring-4 ring-white z-10">
+                            <div className="absolute top-3 right-3 md:top-1/2 md:-translate-y-1/2 md:-left-3 md:right-auto w-5 h-5 sm:w-6 sm:h-6 bg-brand text-white rounded-full flex items-center justify-center text-xs sm:text-sm font-bold shadow-md ring-4 ring-white z-10">
                               ✓
                             </div>
                           )}
 
                           {/* Left Side: Mandi Identity & Details */}
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-extrabold uppercase tracking-wide text-emerald-800">
+                              <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wide text-emerald-800 bg-emerald-100/60 px-2 py-0.5 rounded">
                                 {centre.state}
                               </span>
                               {isDiverted ? (
-                                <span className="px-2 py-0.5 rounded text-3xs font-extrabold bg-amber-500 text-white uppercase animate-pulse">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-500 text-white uppercase animate-pulse">
                                   Traffic Divert
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 rounded text-3xs font-extrabold bg-emerald-100 text-emerald-800 uppercase">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-800 uppercase">
                                   Normal Intake
                                 </span>
                               )}
                             </div>
 
-                            <h3 className="font-bold text-gray-900 text-base">{centre.name}</h3>
-                            <p className="text-xs text-gray-500 mt-1">📍 {centre.location}</p>
+                            <h3 className="font-extrabold text-gray-900 text-sm sm:text-base">{centre.name}</h3>
+                            <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">📍 {centre.location}</p>
 
-                            <div className="mt-3 flex items-center gap-4 text-xs text-gray-500 font-medium">
+                            <div className="mt-2 flex items-center gap-3 text-[11px] sm:text-xs text-gray-500 font-medium flex-wrap">
                               <span className="flex items-center gap-1">👤 {centre.manager_name}</span>
                               <span className="flex items-center gap-1 font-mono">📞 {centre.manager_phone}</span>
                             </div>
                           </div>
 
                           {/* Right Side: Capacity Progress */}
-                          <div className="w-full md:w-1/3 min-w-[250px] shrink-0 mt-4 md:mt-0">
-                            <div className="space-y-1.5">
-                              <div className="flex justify-between text-xs font-bold text-gray-600">
-                                <span>Current Live Load (Today):</span>
+                          <div className="w-full md:w-1/3 min-w-0 md:min-w-[220px] shrink-0 mt-2 md:mt-0 pt-2 md:pt-0 border-t md:border-t-0 border-gray-100">
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[11px] sm:text-xs font-bold text-gray-600">
+                                <span>Live Capacity:</span>
                                 <span className={util >= 85 ? 'text-red-600' : util >= 60 ? 'text-amber-600' : 'text-emerald-700'}>
                                   {util}% ({available} Q Left)
                                 </span>
                               </div>
-                              <div className="w-full bg-gray-200 h-2.5 rounded-full overflow-hidden">
+                              <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
                                 <div
                                   className={`h-full rounded-full transition-all ${
                                     util >= 85 ? 'bg-red-500' : util >= 60 ? 'bg-amber-500' : 'bg-brand'
@@ -1102,8 +1107,8 @@ export default function SlotBooking() {
                             </div>
 
                             {isDiverted && (
-                              <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 font-medium">
-                                ⚠️ {centre.alert_message || 'Heavy intake. Recommended to reroute to alternate Mandis.'}
+                              <div className="mt-2 p-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 font-medium">
+                                ⚠️ {centre.alert_message || 'Heavy intake. Recommended to reroute.'}
                               </div>
                             )}
                           </div>
@@ -1158,24 +1163,72 @@ export default function SlotBooking() {
                 </div>
 
                 {/* Date Picker Header */}
-                <div className="pb-6 mb-6 border-b border-gray-100">
-                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
-                    <span className="p-1.5 bg-blue-100 text-blue-800 rounded-lg text-sm">📅</span>
+                <div className="pb-4 sm:pb-6 mb-4 sm:mb-6 border-b border-gray-100">
+                  <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 mb-3">
+                    <span className="p-1 sm:p-1.5 bg-blue-100 text-blue-800 rounded-lg text-xs sm:text-sm">📅</span>
                     Select Booking Date
                   </h2>
-                  <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                    <label className="block text-xs font-bold text-gray-700 mb-2">Desired Intake Date:</label>
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      min={todayLocal}
-                      max={maxDateLocal}
-                      onChange={(e) => {
-                        setSelectedDate(e.target.value);
-                        setSelectedSlot(null);
-                      }}
-                      className="w-full sm:w-64 border-2 border-emerald-300 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-brand cursor-pointer shadow-sm"
-                    />
+
+                  <div className="bg-gray-50 p-3.5 sm:p-5 rounded-2xl border border-gray-200 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <label className="block text-xs font-bold text-gray-700">
+                        Desired Intake Date <span className="text-gray-400 font-mono font-normal">(DD/MM/YYYY)</span>:
+                      </label>
+                      <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                        Selected: {formatDateDisplay(selectedDate)}
+                      </span>
+                    </div>
+
+                    {/* Quick 1-Tap Date Pills */}
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedDate(todayLocal); setSelectedSlot(null); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          selectedDate === todayLocal
+                            ? 'bg-brand text-white shadow-md scale-102'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 shadow-2xs'
+                        }`}
+                      >
+                        ⚡ Today ({formatDateDisplay(todayLocal)})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedDate(tomorrowLocal); setSelectedSlot(null); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          selectedDate === tomorrowLocal
+                            ? 'bg-brand text-white shadow-md scale-102'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 shadow-2xs'
+                        }`}
+                      >
+                        📅 Tomorrow ({formatDateDisplay(tomorrowLocal)})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedDate(dayAfterLocal); setSelectedSlot(null); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          selectedDate === dayAfterLocal
+                            ? 'bg-brand text-white shadow-md scale-102'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 shadow-2xs'
+                        }`}
+                      >
+                        📆 In 2 Days ({formatDateDisplay(dayAfterLocal)})
+                      </button>
+                    </div>
+
+                    <div className="pt-2">
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        min={todayLocal}
+                        max={maxDateLocal}
+                        onChange={(e) => {
+                          setSelectedDate(e.target.value);
+                          setSelectedSlot(null);
+                        }}
+                        className="w-full sm:w-64 border-2 border-emerald-300 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-brand cursor-pointer shadow-sm bg-white"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1472,11 +1525,11 @@ export default function SlotBooking() {
 
       {/* OFFICIAL DIGITAL GATE PASS MODAL / SLIP */}
       {activePassModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full border-4 border-emerald-800 overflow-hidden animate-fadeIn my-8">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full border-2 sm:border-4 border-emerald-800 overflow-hidden animate-fadeIn my-auto max-h-[92vh] overflow-y-auto">
             
             {/* PRINTABLE GATE PASS CONTENT */}
-            <div id="printable-gate-pass" className="p-6 sm:p-8 bg-gradient-to-b from-emerald-50/60 via-white to-emerald-50/30">
+            <div id="printable-gate-pass" className="p-4 sm:p-8 bg-gradient-to-b from-emerald-50/60 via-white to-emerald-50/30">
               
               {/* Official Seal & Header */}
               <div className="text-center pb-4 border-b-2 border-emerald-800/30 relative">

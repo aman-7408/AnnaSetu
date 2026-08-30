@@ -85,8 +85,10 @@ export default function PaymentStatus() {
             <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3.5 rounded-xl border border-gray-200">
               <div>
                 <span className="text-gray-400 font-semibold block text-3xs uppercase">Beneficiary Kisan</span>
-                <span className="font-extrabold text-gray-900 text-sm">{selectedReceipt.farmer_name || 'Aman Kumar'}</span>
-                <span className="text-gray-500 block text-3xs font-mono mt-0.5">Aadhaar: •••• •••• {selectedReceipt.farmer_aadhar?.slice(-4) || '3333'}</span>
+                <span className="font-extrabold text-gray-900 text-sm">
+                  {selectedReceipt.farmer_name || localStorage.getItem('farmer_name') || 'Registered Kisan'}
+                </span>
+                <span className="text-gray-500 block text-3xs font-mono mt-0.5">Aadhaar: •••• •••• {selectedReceipt.farmer_aadhar?.slice(-4) || '••••'}</span>
               </div>
               <div>
                 <span className="text-gray-400 font-semibold block text-3xs uppercase">J-Form Reference</span>
@@ -169,52 +171,54 @@ export default function PaymentStatus() {
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-5xl mx-auto">
+    <div className="py-4 px-3 sm:py-8 sm:px-6 space-y-4 sm:space-y-6 max-w-5xl mx-auto">
       {renderReceiptModal()}
 
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-emerald-900 to-emerald-800 text-white p-6 md:p-8 rounded-3xl shadow-xl border border-emerald-700 relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+      <div className="bg-gradient-to-r from-emerald-900 to-emerald-800 text-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl shadow-xl border border-emerald-700 relative overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 relative z-10">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-700/60 border border-emerald-500/40 rounded-full text-xs font-semibold uppercase tracking-wider text-emerald-200 mb-3">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 bg-emerald-700/60 border border-emerald-500/40 rounded-full text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-emerald-200 mb-2 sm:mb-3">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               Direct Benefit Transfer (DBT) Portal
             </div>
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Kisan Payment Settlement</h1>
-            <p className="text-sm text-emerald-200 mt-2 font-medium">
+            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">Kisan Payment Settlement</h1>
+            <p className="text-xs sm:text-sm text-emerald-200 mt-1 sm:mt-2 font-medium">
               Real-time PFMS bank disbursal tracking & instant digital J-Form settlement vouchers.
             </p>
           </div>
 
           {/* Quick Metrics Badge */}
-          <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20 text-center min-w-[200px] shrink-0">
-            <span className="text-3xs font-extrabold uppercase text-emerald-300 tracking-wider block">Total Disbursed to Date</span>
-            <span className="text-3xl font-black text-white mt-1 block">₹{totalDisbursed.toLocaleString('en-IN')}</span>
-            <span className="text-3xs text-emerald-200 block mt-1">Beneficiary: Aman Kumar</span>
+          <div className="bg-white/10 backdrop-blur-md p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-white/20 text-center min-w-0 sm:min-w-[200px] shrink-0">
+            <span className="text-[10px] sm:text-3xs font-extrabold uppercase text-emerald-300 tracking-wider block">Total Disbursed to Date</span>
+            <span className="text-2xl sm:text-3xl font-black text-white mt-0.5 sm:mt-1 block">₹{totalDisbursed.toLocaleString('en-IN')}</span>
+            <span className="text-[10px] sm:text-3xs text-emerald-200 block mt-0.5 sm:mt-1">
+              Beneficiary: {localStorage.getItem('farmer_name') || (payments.length > 0 ? payments[0].farmer_name : 'Registered Kisan')}
+            </span>
           </div>
         </div>
 
         {/* Tab Buttons */}
-        <div className="mt-6 pt-4 border-t border-emerald-700/50 flex gap-2">
+        <div className="mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-emerald-700/50 flex gap-2 flex-wrap">
           <button
             onClick={() => setActiveTab('latest')}
-            className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'latest'
                 ? 'bg-white text-emerald-900 shadow-md scale-105'
                 : 'text-emerald-200 hover:bg-white/10'
             }`}
           >
-            🌾 Latest Consignment Payout
+            🌾 Latest Payout
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2 sm:px-5 sm:py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'history'
                 ? 'bg-white text-emerald-900 shadow-md scale-105'
                 : 'text-emerald-200 hover:bg-white/10'
             }`}
           >
-            📋 All Payment Records ({payments.length})
+            📋 All Records ({payments.length})
           </button>
         </div>
       </div>

@@ -7,13 +7,23 @@ export default function ProcurementTracker() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
+  const savedFarmer = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('farmer_user')) || {};
+    } catch {
+      return {};
+    }
+  })();
+  const activeFarmerAadhar = localStorage.getItem('farmer_aadhar') || savedFarmer.aadhar_number || null;
+
   const [procurement, setProcurement] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showTractorIcon, setShowTractorIcon] = useState(true);
   const [searchToken, setSearchToken] = useState('');
-  const [recentTokens, setRecentTokens] = useState([]);
+  const [myTokens, setMyTokens] = useState([]);
+  const [loadingTokens, setLoadingTokens] = useState(true);
 
   // Alternates between Tractor icon and Step Number for the active milestone node
   useEffect(() => {
@@ -23,30 +33,45 @@ export default function ProcurementTracker() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch recent active tokens from DB for quick-select chips & default load
-  useEffect(() => {
-    fetch(`${API_BASE}/procurements`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.procurements && data.procurements.length > 0) {
-          setRecentTokens(data.procurements.slice(0, 5));
+  // Fetch strictly the logged-in farmer's tokens from DB
+  const fetchFarmerTokens = async () => {
+    setLoadingTokens(true);
+    try {
+      const url = activeFarmerAadhar 
+        ? `${API_BASE}/procurements?farmer_aadhar=${activeFarmerAadhar}`
+        : `${API_BASE}/procurements`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success && data.procurements) {
+        setMyTokens(data.procurements);
 
-          // Auto-load most recent token if no token is in URL query
-          const urlToken = searchParams.get('token');
-          if (!urlToken && data.procurements[0]) {
-            const defaultToken = data.procurements[0].token_id;
-            setSearchToken(defaultToken);
-            fetchProcurement(defaultToken);
-          }
+        // Auto-load token if specified in URL or default to the most recent token of this farmer
+        const urlToken = searchParams.get('token');
+        if (urlToken) {
+          setSearchToken(urlToken);
+          fetchProcurement(urlToken);
+        } else if (data.procurements.length > 0) {
+          const defaultToken = data.procurements[0].token_id;
+          setSearchToken(defaultToken);
+          setSearchParams({ token: defaultToken });
+          fetchProcurement(defaultToken);
         }
-      })
-      .catch(() => {});
-  }, [searchParams]);
+      }
+    } catch (err) {
+      console.error('Error fetching farmer tokens:', err);
+    } finally {
+      setLoadingTokens(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFarmerTokens();
+  }, [activeFarmerAadhar]);
 
   // Read URL query parameter ?token=AS-2026-xxx
   useEffect(() => {
     const urlToken = searchParams.get('token');
-    if (urlToken) {
+    if (urlToken && urlToken !== procurement?.token_id) {
       setSearchToken(urlToken);
       fetchProcurement(urlToken);
     }
@@ -62,7 +87,7 @@ export default function ProcurementTracker() {
     }, 6000);
 
     return () => clearInterval(autoSyncTimer);
-  }, [searchParams]);
+  }, [searchParams, activeFarmerAadhar]);
 
   const fetchProcurement = async (tokenId, isManual = false, isSilent = false) => {
     if (!tokenId) return;
@@ -71,7 +96,10 @@ export default function ProcurementTracker() {
     if (!isSilent) setErrorMessage(null);
 
     try {
-      const res = await fetch(`${API_BASE}/procurements/${tokenId}`);
+      const url = activeFarmerAadhar 
+        ? `${API_BASE}/procurements/${tokenId}?farmer_aadhar=${activeFarmerAadhar}`
+        : `${API_BASE}/procurements/${tokenId}`;
+      const res = await fetch(url);
       const data = await res.json();
       if (res.ok && data.success) {
         setProcurement(data.procurement);
@@ -93,8 +121,9 @@ export default function ProcurementTracker() {
   const handleSearch = (e) => {
     e.preventDefault();
     if (!searchToken.trim()) return;
-    setSearchParams({ token: searchToken.trim().toUpperCase() });
-    fetchProcurement(searchToken.trim().toUpperCase());
+    const cleanToken = searchToken.trim().toUpperCase();
+    setSearchParams({ token: cleanToken });
+    fetchProcurement(cleanToken);
   };
 
   const handleSelectChip = (token) => {
@@ -118,10 +147,93 @@ export default function ProcurementTracker() {
     { id: 5, title: 'J-Form Payout', subtitle: 'MSP Disbursed' }
   ];
 
+  // Token Selection Hub Component
+  const renderFarmerTokensHub = () => {
+    if (!activeFarmerAadhar && myTokens.length === 0) return null;
+
+    return (
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm border border-gray-200 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🧑‍🌾</span>
+            <div>
+              <h3 className="font-extrabold text-sm sm:text-base text-gray-900">My Consignment Passes</h3>
+              <p className="text-3xs sm:text-2xs text-gray-500">
+                Click any token to inspect its live intake station progress:
+              </p>
+            </div>
+          </div>
+          <span className="bg-emerald-100 text-emerald-900 text-3xs font-extrabold px-2.5 py-1 rounded-full">
+            {myTokens.length} Tokens
+          </span>
+        </div>
+
+        {loadingTokens ? (
+          <p className="text-xs text-gray-400 italic">Loading your booked tokens...</p>
+        ) : myTokens.length === 0 ? (
+          <div className="p-6 bg-emerald-50/60 rounded-2xl border border-emerald-200 text-center space-y-2">
+            <span className="text-3xl block">🌾</span>
+            <h4 className="font-extrabold text-emerald-950 text-sm">No Active Consignments Found</h4>
+            <p className="text-xs text-emerald-800">You haven't booked any Mandi delivery slots yet.</p>
+            <button 
+              onClick={() => navigate('/book-slot')} 
+              className="bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold px-4 py-2 rounded-xl text-xs shadow-sm cursor-pointer mt-1"
+            >
+              ⚡ Book a Mandi Slot
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {myTokens.map(tok => {
+              const isSelected = tok.token_id === procurement?.token_id;
+              const isRejected = tok.status === 'rejected';
+              const isCompleted = tok.current_stage >= 5 && !isRejected;
+
+              return (
+                <div 
+                  key={tok.token_id}
+                  onClick={() => handleSelectChip(tok.token_id)}
+                  className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
+                    isSelected
+                      ? isRejected
+                        ? 'bg-red-50 border-red-500 shadow-md ring-2 ring-red-100'
+                        : 'bg-emerald-50 border-emerald-600 shadow-md ring-2 ring-emerald-100'
+                      : 'bg-gray-50/80 border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/40'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="font-mono font-black text-xs text-gray-900">{tok.token_id}</span>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
+                      isRejected 
+                        ? 'bg-red-100 text-red-900 border border-red-300' 
+                        : isCompleted 
+                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' 
+                          : 'bg-amber-100 text-amber-900 border border-amber-300'
+                    }`}>
+                      {isRejected ? '🚫 Rejected' : isCompleted ? '✓ Completed' : `Stage ${tok.current_stage || 1} / 5`}
+                    </span>
+                  </div>
+                  <p className="font-extrabold text-xs text-gray-800 mt-1 truncate">{tok.centre_name}</p>
+                  <div className="flex justify-between text-3xs text-gray-500 font-medium mt-0.5">
+                    <span>{tok.crop_type || 'Wheat'}</span>
+                    <span>{tok.estimated_weight_quintals || 45} Q</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // VIEW 1: SEARCH STATE
   if (!procurement && !loading) {
     return (
-      <div className="py-12 px-4 sm:px-6 max-w-4xl mx-auto font-sans min-h-[65vh] flex flex-col items-center justify-center">
+      <div className="py-8 px-4 sm:px-6 max-w-4xl mx-auto font-sans space-y-6">
+        {/* Token Selector Hub */}
+        {renderFarmerTokensHub()}
+
         <div className="bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-gray-200 w-full text-center relative overflow-hidden">
           
           <div className="w-16 h-16 bg-emerald-100 text-emerald-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">
@@ -153,30 +265,8 @@ export default function ProcurementTracker() {
           </form>
 
           {errorMessage && (
-            <div className="max-w-md mx-auto mb-6 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-bold">
+            <div className="max-w-md mx-auto mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-bold">
               ⚠️ {errorMessage}
-            </div>
-          )}
-
-          {/* Quick-Select Recent Tokens */}
-          {recentTokens.length > 0 && (
-            <div className="pt-6 border-t border-gray-100 text-left">
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 text-center">
-                Or click an active Mandi consignment to inspect:
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {recentTokens.map(p => (
-                  <button
-                    key={p.token_id}
-                    onClick={() => handleSelectChip(p.token_id)}
-                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-3.5 py-1.5 rounded-full text-xs font-mono font-bold transition-all hover:scale-105 cursor-pointer flex items-center gap-1.5"
-                  >
-                    <span>●</span>
-                    <span>{p.token_id}</span>
-                    <span className="text-[10px] text-emerald-600 font-sans font-medium">({p.farmer_name?.split(' ')[0]})</span>
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
@@ -225,10 +315,20 @@ export default function ProcurementTracker() {
         timestamp: new Date(procurement.weighed_at || Date.now()).toLocaleString(), officer: 'Weighbridge Operator'
       });
     }
-    if (currentStage >= 5) {
+    if (currentStage >= 5 && procurement.status !== 'rejected') {
       logs.push({
         stage: 5, title: 'J-Form & Payout Disbursed', notes: `₹${finalPayout.toLocaleString('en-IN')} approved via Direct Benefit Transfer.`,
         timestamp: new Date(procurement.approved_at || Date.now()).toLocaleString(), officer: 'Mandi Manager'
+      });
+    }
+    if (procurement.status === 'rejected') {
+      logs.push({
+        stage: procurement.rejection_stage || 3,
+        title: `Consignment Terminated at Stage ${procurement.rejection_stage || 3}`,
+        notes: `REJECTED: ${procurement.rejection_reason || 'Standards not met'}. Inspected by ${procurement.rejected_by || 'Quality Officer'}.`,
+        timestamp: new Date(procurement.rejected_at || procurement.updated_at || Date.now()).toLocaleString(),
+        officer: procurement.rejected_by || 'Quality Officer',
+        isRejected: true
       });
     }
     return logs.reverse();
@@ -237,51 +337,58 @@ export default function ProcurementTracker() {
   const auditLogs = getAuditLogs();
 
   return (
-    <div className="py-8 px-4 sm:px-6 max-w-5xl mx-auto font-sans">
+    <div className="py-4 px-3 sm:py-8 sm:px-6 max-w-5xl mx-auto font-sans space-y-4 sm:space-y-6">
       
+      {/* 🧑‍🌾 My Consignment Passes Hub */}
+      {renderFarmerTokensHub()}
+
       {/* Tracker Header */}
-      <div className="bg-gradient-to-r from-gray-900 to-slate-800 text-white p-6 sm:p-8 rounded-3xl shadow-xl mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-gray-900 to-slate-800 text-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 relative overflow-hidden">
         
         {/* Subtle background icon */}
-        <div className="absolute right-0 top-0 text-9xl opacity-5 pointer-events-none transform translate-x-4 -translate-y-4">
+        <div className="absolute right-0 top-0 text-8xl sm:text-9xl opacity-5 pointer-events-none transform translate-x-4 -translate-y-4">
           🚛
         </div>
 
         <div className="relative z-10">
           <div className="flex items-center gap-2 mb-2">
-            <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest backdrop-blur-sm border border-white/10">
+            <span className="bg-white/20 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-widest backdrop-blur-sm border border-white/10">
               Live Mandi Consignment
             </span>
-            {isRefreshing && (
-              <span className="flex items-center gap-1 text-[10px] text-emerald-300 font-bold ml-2">
+            {procurement.status === 'rejected' ? (
+              <span className="bg-red-500/90 text-white px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest">
+                🚫 Terminated / Rejected
+              </span>
+            ) : isRefreshing ? (
+              <span className="flex items-center gap-1 text-[10px] text-emerald-300 font-bold ml-1 sm:ml-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Syncing
               </span>
-            )}
+            ) : null}
           </div>
           
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight font-mono text-emerald-300">
+          <h1 className="text-xl sm:text-3xl font-black tracking-tight font-mono text-emerald-300">
             {procurement.token_id}
           </h1>
           
-          <p className="text-slate-300 mt-2 text-sm font-medium">
+          <p className="text-slate-300 mt-1 sm:mt-2 text-xs sm:text-sm font-medium">
             Mandi: <span className="text-white font-bold">{procurement.centre_name}</span> &bull; Farmer: <span className="text-white font-bold">{procurement.farmer_name}</span>
           </p>
           
-          <div className="mt-3 flex gap-4 text-xs font-bold text-slate-300">
+          <div className="mt-2.5 sm:mt-3 flex gap-3 text-xs font-bold text-slate-300">
             <button 
               onClick={handleResetSearch}
-              className="text-slate-300 hover:text-white cursor-pointer flex items-center gap-1.5 transition-colors font-medium"
+              className="text-slate-300 hover:text-white cursor-pointer flex items-center gap-1.5 transition-colors font-medium text-xs"
             >
               <span>🔍</span> Track Another Token
             </button>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-col gap-3 md:items-end">
+        <div className="relative z-10 flex flex-col gap-2 md:items-end">
           <button 
             onClick={() => fetchProcurement(procurement.token_id, true)}
             disabled={isRefreshing}
-            className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all border border-white/20 flex items-center gap-2 backdrop-blur-sm cursor-pointer disabled:opacity-50"
+            className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs font-bold transition-all border border-white/20 flex items-center justify-center gap-2 backdrop-blur-sm cursor-pointer disabled:opacity-50"
           >
             <span className={isRefreshing ? 'animate-spin' : ''}>🔄</span> 
             {isRefreshing ? 'Refreshing...' : 'Refresh Live Status'}
@@ -289,8 +396,42 @@ export default function ProcurementTracker() {
         </div>
       </div>
 
+      {/* REJECTION HERO ALERT CARD (Visible when status === 'rejected') */}
+      {procurement.status === 'rejected' && (
+        <div className="bg-red-50 border-2 border-red-500 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-md animate-fade-in space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-2xl font-black shrink-0 border border-red-300">
+              🚫
+            </div>
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-red-800 bg-red-200/80 px-2.5 py-0.5 rounded-full">
+                Consignment Terminated
+              </span>
+              <h3 className="text-base sm:text-xl font-black text-red-950 mt-0.5">
+                Consignment Rejected at {procurement.rejection_stage === 4 ? 'Station 4 (Weighbridge)' : 'Station 3 (Quality Lab)'}
+              </h3>
+            </div>
+          </div>
+
+          <div className="bg-white/90 rounded-xl p-3 sm:p-4 border border-red-200 text-xs sm:text-sm space-y-1.5 shadow-2xs">
+            <p className="text-gray-800 font-medium">
+              <strong className="text-red-900">Official Reason:</strong> {procurement.rejection_reason || 'Grain lot did not comply with prescribed Mandi tolerance thresholds.'}
+            </p>
+            <div className="flex items-center justify-between text-2xs text-gray-500 pt-1 border-t border-gray-100 flex-wrap gap-2">
+              <span>Inspecting Authority: <strong className="text-gray-800">{procurement.rejected_by || 'Mandi Inspection Officer'}</strong></span>
+              <span className="font-mono">{new Date(procurement.rejected_at || procurement.updated_at || Date.now()).toLocaleString()}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-bold text-red-900">
+            <span>⚠️</span>
+            <span>Please collect your tractor gate pass at the exit security gate.</span>
+          </div>
+        </div>
+      )}
+
       {/* PROGRESS MILESTONES (Responsive: Horizontal on Desktop, Vertical on Mobile) */}
-      <div className="bg-white rounded-3xl shadow-md border border-gray-200 p-6 sm:p-10 mb-8 overflow-hidden">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-gray-200 p-4 sm:p-8 overflow-hidden">
         
         {/* DESKTOP / TABLET HORIZONTAL STEPPER */}
         <div className="hidden sm:block relative">
@@ -299,13 +440,50 @@ export default function ProcurementTracker() {
           
           {/* Active Progress Line */}
           <div 
-            className="absolute top-6 left-[10%] h-1.5 bg-brand rounded-full z-0 transition-all duration-700 ease-in-out"
-            style={{ width: `${(Math.max(1, Math.min(currentStage, 5)) - 1) * 20}%` }}
+            className={`absolute top-6 left-[10%] h-1.5 rounded-full z-0 transition-all duration-700 ease-in-out ${
+              procurement.status === 'rejected' ? 'bg-gradient-to-r from-emerald-500 to-red-500' : 'bg-brand'
+            }`}
+            style={{ 
+              width: `${(Math.max(1, Math.min(procurement.status === 'rejected' ? (procurement.rejection_stage || 3) : currentStage, 5)) - 1) * 20}%` 
+            }}
           ></div>
 
           {/* Nodes */}
           <div className="relative z-10 flex justify-between">
             {STAGES.map((stage) => {
+              const isRejected = procurement.status === 'rejected';
+              const rejectionStage = procurement.rejection_stage || 3;
+
+              if (isRejected) {
+                const isPassedBefore = stage.id < rejectionStage;
+                const isRejectionNode = stage.id === rejectionStage;
+
+                return (
+                  <div key={stage.id} className="flex flex-col items-center w-[20%] relative group">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-sm border-4 transition-all duration-300 ${
+                      isRejectionNode
+                        ? 'bg-red-600 text-white border-red-200 shadow-[0_0_18px_rgba(239,68,68,0.5)] scale-110'
+                        : isPassedBefore
+                          ? 'bg-brand text-white border-brand'
+                          : 'bg-gray-50 text-gray-300 border-gray-100 opacity-40'
+                    }`}>
+                      {isRejectionNode ? '✕' : isPassedBefore ? '✓' : stage.id}
+                    </div>
+                    
+                    <div className="mt-4 text-center">
+                      <p className={`text-xs font-black uppercase tracking-wider mb-1 ${
+                        isRejectionNode ? 'text-red-700 font-extrabold' : isPassedBefore ? 'text-gray-800' : 'text-gray-300 line-through'
+                      }`}>
+                        {stage.title}
+                      </p>
+                      <p className={`text-[10px] font-medium ${isRejectionNode ? 'text-red-600 font-bold' : isPassedBefore ? 'text-gray-500' : 'text-gray-400'}`}>
+                        {isRejectionNode ? '🚫 Terminated' : isPassedBefore ? stage.subtitle : 'Cancelled'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+
               const isActive = currentStage === stage.id;
               const isPast = currentStage > stage.id;
               
@@ -347,11 +525,70 @@ export default function ProcurementTracker() {
 
         {/* MOBILE VERTICAL STEPPER */}
         <div className="block sm:hidden space-y-4">
-          <span className="text-2xs font-extrabold uppercase tracking-wider text-gray-400 block mb-2">
-            Consignment Intake Stages ({currentStage}/5)
+          <span className={`text-2xs font-extrabold uppercase tracking-wider block mb-2 ${
+            procurement.status === 'rejected' ? 'text-red-700 font-black' : 'text-gray-400'
+          }`}>
+            {procurement.status === 'rejected' 
+              ? `🚫 Consignment Terminated at Station ${procurement.rejection_stage || 3} / 5`
+              : `Consignment Intake Stages (${currentStage}/5)`
+            }
           </span>
           <div className="relative pl-6 space-y-5 before:absolute before:left-3 before:top-3 before:bottom-3 before:w-0.5 before:bg-gray-200">
             {STAGES.map((stage) => {
+              const isRejected = procurement.status === 'rejected';
+              const rejectionStage = procurement.rejection_stage || 3;
+
+              if (isRejected) {
+                const isPassedBefore = stage.id < rejectionStage;
+                const isRejectionNode = stage.id === rejectionStage;
+                const isCancelled = stage.id > rejectionStage;
+
+                return (
+                  <div key={stage.id} className="relative flex items-center gap-3.5">
+                    <div className={`absolute -left-6 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs border-2 z-10 transition-all ${
+                      isRejectionNode
+                        ? 'bg-red-600 text-white border-red-300 ring-4 ring-red-100 scale-110 shadow-sm'
+                        : isPassedBefore
+                          ? 'bg-brand text-white border-brand'
+                          : 'bg-gray-100 text-gray-300 border-gray-200'
+                    }`}>
+                      {isRejectionNode ? '✕' : isPassedBefore ? '✓' : '-'}
+                    </div>
+
+                    <div className={`flex-1 p-3 rounded-xl border transition-all ${
+                      isRejectionNode
+                        ? 'bg-red-50/90 border-2 border-red-400 shadow-sm'
+                        : isPassedBefore
+                          ? 'bg-gray-50/60 border-gray-200'
+                          : 'bg-white border-gray-100 opacity-40'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <h4 className={`text-xs font-extrabold uppercase tracking-wide ${
+                          isRejectionNode ? 'text-red-950 font-black' : isPassedBefore ? 'text-gray-900' : 'text-gray-400 line-through'
+                        }`}>
+                          {stage.title}
+                        </h4>
+                        {isRejectionNode && (
+                          <span className="text-3xs font-black bg-red-600 text-white px-2 py-0.5 rounded-full uppercase shadow-xs">
+                            🚫 Rejected
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-3xs mt-0.5 font-medium ${
+                        isRejectionNode ? 'text-red-700 font-bold' : 'text-gray-500'
+                      }`}>
+                        {isRejectionNode 
+                          ? (procurement.rejection_reason || 'Standards not met') 
+                          : isCancelled 
+                            ? 'Cancelled / Not Reached' 
+                            : stage.subtitle
+                        }
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+
               const isActive = currentStage === stage.id;
               const isPast = currentStage > stage.id;
 

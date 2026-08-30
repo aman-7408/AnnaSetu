@@ -65,12 +65,20 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
 
   const checkUnread = async () => {
     try {
-      const farmerId = farmerSession?.aadhar || localStorage.getItem('farmer_aadhar') || '111122223333';
-      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const res = await fetch(`${apiBase}/api/notifications/farmer/${farmerId}?unread_only=true`);
-      const data = await res.json();
-      if (data.success) {
-        setUnreadCount(data.unread_count || 0);
+      const farmerId = farmerSession?.aadhar || localStorage.getItem('farmer_aadhar');
+      if (!farmerId) return;
+      const apiBase = import.meta.env.VITE_API_URL || '';
+      let res;
+      try {
+        res = await fetch(`${apiBase}/api/notifications/farmer/${farmerId}?unread_only=true`);
+      } catch {
+        res = await fetch(`/api/notifications/farmer/${farmerId}?unread_only=true`);
+      }
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setUnreadCount(Number(data.unread_count) || 0);
+        }
       }
     } catch (e) {}
   };
@@ -80,7 +88,7 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
     const handler = () => checkUnread();
     window.addEventListener('notifications-updated', handler);
     window.addEventListener('farmer-session-changed', handler);
-    const interval = setInterval(checkUnread, 10000);
+    const interval = setInterval(checkUnread, 5000);
     return () => {
       window.removeEventListener('notifications-updated', handler);
       window.removeEventListener('farmer-session-changed', handler);
@@ -109,35 +117,17 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
         
         {/* Navigation Links */}
         <ul className="hidden md:flex space-x-5 text-sm font-medium items-center">
-          {!isFarmerLoggedIn ? (
-            /* === LOGGED OUT (GUEST / PUBLIC NAVBAR) === */
+          {isFarmerLoggedIn ? (
+            /* === 1. LOGGED IN KISAN NAVBAR === */
             <>
+              <li><Link to="/book-slot" className="cursor-pointer hover:text-green-200 transition-colors font-medium">Book Slot</Link></li>
+              <li><Link to="/tracker" className="cursor-pointer hover:text-green-200 transition-colors font-medium">Tracker</Link></li>
+              <li><Link to="/payments" className="cursor-pointer hover:text-green-200 transition-colors font-medium">DBT Payments</Link></li>
               <li>
-                <Link to="/register" className="cursor-pointer hover:text-green-200 transition-colors font-bold">
-                  Register
-                </Link>
-              </li>
-              <li>
-                <button
-                  onClick={onFarmerLoginClick}
-                  className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer border border-emerald-500/50 active:scale-95"
-                >
-                  <span>🧑‍🌾</span>
-                  <span>Farmer Login</span>
-                </button>
-              </li>
-            </>
-          ) : (
-            /* === LOGGED IN (AUTHENTICATED KISAN NAVBAR) === */
-            <>
-              <li><Link to="/book-slot" className="cursor-pointer hover:text-green-200 transition-colors">Book Slot</Link></li>
-              <li><Link to="/tracker" className="cursor-pointer hover:text-green-200 transition-colors">Tracker</Link></li>
-              <li><Link to="/payments" className="cursor-pointer hover:text-green-200 transition-colors">DBT Payments</Link></li>
-              <li>
-                <Link to="/notifications" className="cursor-pointer hover:text-green-200 transition-colors flex items-center gap-1.5">
+                <Link to="/notifications" className="cursor-pointer hover:text-green-200 transition-colors flex items-center gap-1.5 font-medium">
                   <span>Notifications</span>
                   {unreadCount > 0 && (
-                    <span className="bg-emerald-400 text-emerald-950 text-[10px] font-black px-1.5 py-0.5 rounded-full animate-pulse">
+                    <span className="bg-red-500 text-white text-[11px] font-black px-2 py-0.5 rounded-full shadow-sm animate-pulse">
                       {unreadCount}
                     </span>
                   )}
@@ -158,38 +148,68 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
                 </div>
               </li>
             </>
-          )}
-          
-          {/* Manager Link */}
-          <li>
-            <button 
-              onClick={onAdminClick}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                isManagerLoggedIn 
-                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-500 shadow-inner' 
-                  : 'bg-brand-dark text-white hover:bg-emerald-700 border border-green-700'
-              }`}
-            >
-              {isManagerLoggedIn ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span>● {userSession?.name ? userSession.name.split(' ')[0] : 'Manager'}</span>
-                </>
-              ) : (
-                <>
+          ) : isManagerLoggedIn ? (
+            /* === 2. LOGGED IN MANDI MANAGER NAVBAR (ONLY MANAGER NAME) === */
+            <li>
+              <div className="flex items-center gap-2 bg-emerald-950 border border-emerald-500/80 rounded-xl px-3.5 py-1.5 text-xs shadow-md">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="font-extrabold text-emerald-200">
+                  {userSession?.name || 'Manager'}
+                </span>
+              </div>
+            </li>
+          ) : (
+            /* === 3. PUBLIC GUEST NAVBAR === */
+            <>
+              <li>
+                <Link to="/register" className="cursor-pointer hover:text-green-200 transition-colors font-bold">
+                  Register
+                </Link>
+              </li>
+              <li>
+                <button
+                  onClick={onFarmerLoginClick}
+                  className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer border border-emerald-500/50 active:scale-95"
+                >
+                  <span>🧑‍🌾</span>
+                  <span>Farmer Login</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  onClick={onAdminClick}
+                  className="bg-brand-dark text-white hover:bg-emerald-700 border border-green-700 flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                >
                   <span>🔒</span>
                   <span>Manager Portal</span>
-                </>
-              )}
-            </button>
-          </li>
+                </button>
+              </li>
+            </>
+          )}
         </ul>
 
-        {/* Mobile Hamburger */}
-        <div className="md:hidden flex items-center cursor-pointer p-1" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 hover:text-green-200 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
+        {/* Mobile Right Header: Instant Bell + Hamburger */}
+        <div className="md:hidden flex items-center gap-2">
+          {isFarmerLoggedIn && (
+            <Link 
+              to="/notifications" 
+              className="relative p-1.5 text-white hover:text-emerald-200 cursor-pointer flex items-center justify-center"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              <span className="text-xl">🔔</span>
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-md animate-pulse">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Link>
+          )}
+
+          <div className="flex items-center cursor-pointer p-1" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 hover:text-green-200 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </div>
         </div>
       </div>
 
@@ -200,26 +220,20 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
             onClick={() => setIsMenuOpen(false)}
           />
           <div className="relative z-50 md:hidden bg-brand-dark px-4 pt-2 pb-5 space-y-2 shadow-xl border-t border-emerald-700 animate-fade-in-down">
-            {!isFarmerLoggedIn ? (
-              <>
-                <Link to="/register" className="block px-3 py-2.5 rounded-xl text-base font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>🌱 Register as Farmer</Link>
-                <button 
-                  onClick={() => { setIsMenuOpen(false); onFarmerLoginClick(); }}
-                  className="w-full text-left block px-3 py-2.5 rounded-xl text-base font-extrabold hover:bg-brand transition-colors cursor-pointer text-emerald-200"
-                >
-                  🧑‍🌾 Farmer Login
-                </button>
-              </>
-            ) : (
+            {isFarmerLoggedIn ? (
+              /* === MOBILE: FARMER === */
               <>
                 <Link to="/book-slot" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>⚡ Book Slot</Link>
                 <Link to="/tracker" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>🛰️ Tracker</Link>
                 <Link to="/payments" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>💰 DBT Payments</Link>
                 <Link to="/notifications" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white flex items-center justify-between" onClick={() => setIsMenuOpen(false)}>
-                  <span>🔔 Notifications</span>
+                  <span className="flex items-center gap-2">
+                    <span>🔔</span>
+                    <span>Notifications</span>
+                  </span>
                   {unreadCount > 0 && (
-                    <span className="bg-emerald-400 text-emerald-950 text-xs font-black px-2 py-0.5 rounded-full">
-                      {unreadCount}
+                    <span className="bg-red-500 text-white text-xs font-black px-2.5 py-0.5 rounded-full shadow-sm animate-pulse">
+                      {unreadCount} New
                     </span>
                   )}
                 </Link>
@@ -228,14 +242,30 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
                   <button onClick={() => { setIsMenuOpen(false); onFarmerLogout(); }} className="text-xs font-bold text-red-300 hover:text-red-100 bg-red-950/80 px-2 py-1 rounded-md">Logout</button>
                 </div>
               </>
+            ) : isManagerLoggedIn ? (
+              /* === MOBILE: MANAGER (ONLY MANAGER NAME) === */
+              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-emerald-950/90 rounded-xl border border-emerald-500/60">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-sm font-extrabold text-emerald-100">{userSession?.name || 'Manager'}</span>
+              </div>
+            ) : (
+              /* === MOBILE: PUBLIC GUEST === */
+              <>
+                <Link to="/register" className="block px-3 py-2.5 rounded-xl text-base font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>🌱 Register as Farmer</Link>
+                <button 
+                  onClick={() => { setIsMenuOpen(false); onFarmerLoginClick(); }}
+                  className="w-full text-left block px-3 py-2.5 rounded-xl text-base font-extrabold hover:bg-brand transition-colors cursor-pointer text-emerald-200"
+                >
+                  🧑‍🌾 Farmer Login
+                </button>
+                <button 
+                  onClick={() => { setIsMenuOpen(false); onAdminClick(); }}
+                  className="w-full text-left block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-yellow-300 border-t border-emerald-800/80 pt-3 mt-2 flex items-center gap-2"
+                >
+                  🔒 Mandi Manager Portal
+                </button>
+              </>
             )}
-
-            <button 
-              onClick={() => { setIsMenuOpen(false); onAdminClick(); }}
-              className="w-full text-left block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-yellow-300 border-t border-emerald-800/80 pt-3 mt-2"
-            >
-              {isManagerLoggedIn ? `● ${userSession?.name || 'Manager'}` : '🔒 Mandi Manager Portal'}
-            </button>
           </div>
         </>
       )}
