@@ -46,10 +46,25 @@ const bookingSchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
+  crops: [
+    {
+      crop_name: { type: String },
+      crop_code: { type: String },
+      msp_rate: { type: Number },
+      quantity: { type: Number },
+      unit: { type: String, default: 'Quintals' },
+      weight_quintals: { type: Number },
+      estimated_payout: { type: Number }
+    }
+  ],
   estimated_weight_quintals: { 
     type: Number, 
     required: true,
-    min: [1, 'Estimated weight must be at least 1 Quintal']
+    min: [0.1, 'Estimated weight must be at least 0.1 Quintal']
+  },
+  total_estimated_payout: {
+    type: Number,
+    default: 0
   },
   status: { 
     type: String, 

@@ -14,6 +14,14 @@ const CROPS = [
   { name: 'Gram / Chana (Desi FAQ)', code: 'CHN', msp: 5440, unit: '₹/Quintal' }
 ];
 
+const MEASURING_UNITS = [
+  { id: 'QUINTAL', name: 'Quintals (Q)', short: 'Q', toQuintals: 1, hint: '1 Quintal = 100 kg (Official MSP Standard)' },
+  { id: 'KG', name: 'Kilograms (kg)', short: 'kg', toQuintals: 0.01, hint: '100 kg = 1 Quintal' },
+  { id: 'TONNE', name: 'Metric Tonnes (MT)', short: 'Tonnes', toQuintals: 10, hint: '1 Tonne = 10 Quintals = 1,000 kg' },
+  { id: 'BAG_50', name: 'Bags / Boras (50 kg)', short: 'Bags (50kg)', toQuintals: 0.5, hint: '1 Standard Bag = 50 kg = 0.5 Quintals' },
+  { id: 'MAUND_40', name: 'Maund / Mann (40 kg)', short: 'Mann (40kg)', toQuintals: 0.4, hint: '1 Traditional Mann = 40 kg = 0.4 Quintals' }
+];
+
 const FALLBACK_CENTRES = [
   {
     _id: '66c000000000000000000001',
@@ -159,6 +167,80 @@ export default function SlotBooking() {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [selectedCrop, setSelectedCrop] = useState(CROPS[0]);
   const [weightQuintals, setWeightQuintals] = useState('45');
+  const [activeUnit, setActiveUnit] = useState('QUINTAL');
+  const [selectedCropsList, setSelectedCropsList] = useState([
+    {
+      crop: CROPS[0],
+      quantity: '27',
+      unit: 'QUINTAL'
+    }
+  ]);
+
+  // Unit conversion helpers
+  const convertToQuintals = (qty, unitId) => {
+    const num = parseFloat(qty) || 0;
+    const unitObj = MEASURING_UNITS.find(u => u.id === unitId) || MEASURING_UNITS[0];
+    return Math.round(num * unitObj.toQuintals * 100) / 100;
+  };
+
+  const convertFromQuintals = (qVal, unitId) => {
+    const q = parseFloat(qVal) || 0;
+    const unitObj = MEASURING_UNITS.find(u => u.id === unitId) || MEASURING_UNITS[0];
+    return Math.round((q / unitObj.toQuintals) * 100) / 100;
+  };
+
+  const handleToggleCrop = (crop) => {
+    setSelectedCropsList(prev => {
+      const exists = prev.find(item => item.crop.code === crop.code);
+      if (exists) {
+        if (prev.length === 1) return prev; // Keep at least 1 crop selected
+        return prev.filter(item => item.crop.code !== crop.code);
+      } else {
+        return [...prev, { crop, quantity: '10', unit: activeUnit }];
+      }
+    });
+  };
+
+  const handleUpdateCropQuantity = (cropCode, quantity) => {
+    setSelectedCropsList(prev =>
+      prev.map(item =>
+        item.crop.code === cropCode ? { ...item, quantity } : item
+      )
+    );
+  };
+
+  const handleUpdateCropUnit = (cropCode, unit) => {
+    setSelectedCropsList(prev =>
+      prev.map(item => {
+        if (item.crop.code === cropCode) {
+          const currentQ = convertToQuintals(item.quantity, item.unit);
+          const newQty = convertFromQuintals(currentQ, unit);
+          return { ...item, unit, quantity: String(newQty || '') };
+        }
+        return item;
+      })
+    );
+  };
+
+  const handleGlobalUnitChange = (newUnit) => {
+    setActiveUnit(newUnit);
+    setSelectedCropsList(prev =>
+      prev.map(item => {
+        const currentQ = convertToQuintals(item.quantity, item.unit);
+        const newQty = convertFromQuintals(currentQ, newUnit);
+        return { ...item, unit: newUnit, quantity: String(newQty || '') };
+      })
+    );
+  };
+
+  const totalCombinedQuintals = selectedCropsList.reduce((sum, item) => {
+    return sum + convertToQuintals(item.quantity, item.unit);
+  }, 0);
+
+  const totalCombinedPayout = selectedCropsList.reduce((sum, item) => {
+    const q = convertToQuintals(item.quantity, item.unit);
+    return sum + Math.round(q * (item.crop.msp || 2275));
+  }, 0);
 
   // Submission & Result States
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -393,7 +475,6 @@ export default function SlotBooking() {
 
   const handleCreateBooking = async () => {
     setErrorMessage('');
-    const weight = Number(weightQuintals);
 
     if (selectedFarmer.name === 'Unregistered') {
       setErrorMessage('Cannot secure slot. You must verify a registered Aadhaar first.');
@@ -408,19 +489,35 @@ export default function SlotBooking() {
       setErrorMessage('Please select a 3-Hour Intake Shift.');
       return;
     }
-    if (!weight || weight <= 0) {
-      setErrorMessage('Please enter a valid grain weight (Quintals).');
+    if (totalCombinedQuintals <= 0) {
+      setErrorMessage('Please enter a valid grain quantity for your selected crops.');
       return;
     }
 
     const remainingSlotCapacity = Math.max(0, selectedSlot.max_capacity_quintals - (selectedSlot.booked_capacity_quintals || 0));
-    if (weight > remainingSlotCapacity) {
-      setErrorMessage(`Cannot exceed available slot limit (${remainingSlotCapacity} Q). Please lower grain weight or choose another shift.`);
+    if (totalCombinedQuintals > remainingSlotCapacity) {
+      setErrorMessage(`Total load (${totalCombinedQuintals} Q) exceeds available shift limit (${remainingSlotCapacity} Q). Please lower crop quantities or select another shift.`);
       return;
     }
 
     try {
       setIsSubmitting(true);
+      const multiCropsData = selectedCropsList.map(item => {
+        const q = convertToQuintals(item.quantity, item.unit);
+        const unitObj = MEASURING_UNITS.find(u => u.id === item.unit) || MEASURING_UNITS[0];
+        return {
+          crop_name: item.crop.name,
+          crop_code: item.crop.code,
+          msp_rate: item.crop.msp,
+          quantity: parseFloat(item.quantity) || 0,
+          unit: unitObj.name,
+          weight_quintals: q,
+          estimated_payout: Math.round(q * item.crop.msp)
+        };
+      });
+
+      const cropTypeSummary = multiCropsData.map(c => `${c.crop_name.split(' ')[0]} (${c.weight_quintals} Q)`).join(' + ');
+
       const payload = {
         farmer_aadhar: selectedFarmer.aadhar,
         farmer_name: selectedFarmer.name,
@@ -428,8 +525,10 @@ export default function SlotBooking() {
         centre_id: selectedCentre._id,
         date: selectedDate,
         slot_code: selectedSlot.slot_code,
-        crop_type: selectedCrop.name,
-        estimated_weight_quintals: weight
+        crop_type: cropTypeSummary || selectedCropsList[0]?.crop.name || 'Wheat',
+        crops: multiCropsData,
+        estimated_weight_quintals: totalCombinedQuintals,
+        total_estimated_payout: totalCombinedPayout
       };
 
       let bookingSaved = null;
@@ -1338,16 +1437,24 @@ export default function SlotBooking() {
             </div>
           )}
 
-          {/* STEP 3: CROP & WEIGHT CONFIRMATION */}
+          {/* STEP 3: MULTI-CROP & MEASURING UNIT SELECTION */}
           {currentStep === 3 && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fade-in">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 pb-4 mb-4 border-b border-gray-100">
-                  <span className="p-1.5 bg-yellow-100 text-yellow-800 rounded-lg text-sm">🌾</span>
-                  Confirm Crop Details & Grain Load (Quintals)
-                </h2>
+                
+                {/* Header with Multi-Crop Badge */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-gray-100">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <span className="p-1.5 bg-yellow-100 text-yellow-800 rounded-lg text-sm">🌾</span>
+                    <span>Crop Selection & Multi-Unit Load Calculator</span>
+                  </h2>
+                  <span className="text-xs font-extrabold px-3 py-1 bg-emerald-100 text-emerald-900 rounded-full border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
+                    <span>✨</span>
+                    <span>Multi-Crop Mode ({selectedCropsList.length} Selected)</span>
+                  </span>
+                </div>
 
-                {/* SUMMARY RIBBON */}
+                {/* Summary Ribbon */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-6 text-xs">
                   <div>
                     <span className="text-gray-500 block">Selected Mandi:</span>
@@ -1358,104 +1465,238 @@ export default function SlotBooking() {
                     <span className="font-bold text-gray-900">{selectedDate} ({selectedSlot?.slot_name})</span>
                   </div>
                   <div>
-                    <span className="text-gray-500 block">Remaining Quota:</span>
+                    <span className="text-gray-500 block">Remaining Shift Quota:</span>
                     <span className="font-bold text-emerald-800">{remainingSlotCap} Quintals Available</span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Crop Selection */}
-                  <div>
-                    <label className="block text-xs font-bold text-gray-800 mb-2">Select Commodity / Crop Type:</label>
-                    <div className="space-y-2">
-                      {CROPS.map((crop) => (
-                        <div
-                          key={crop.code}
-                          onClick={() => setSelectedCrop(crop)}
-                          className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${
-                            selectedCrop.code === crop.code
-                              ? 'border-brand bg-emerald-50/50 shadow-sm font-bold ring-2 ring-emerald-200'
-                              : 'border-gray-200 hover:border-gray-300 bg-white'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">📦</span>
-                            <span className="text-xs text-gray-900">{crop.name}</span>
-                          </div>
-                          <span className="text-xs font-extrabold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
-                            MSP ₹{crop.msp.toLocaleString('en-IN')}/Q
-                          </span>
+                {/* MEASURING UNIT SELECTOR BAR */}
+                <div className="mb-6 p-4 bg-gradient-to-r from-emerald-50/80 via-white to-teal-50/80 rounded-2xl border-2 border-emerald-200">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div>
+                      <span className="text-xs font-extrabold text-emerald-950 uppercase tracking-wider block">
+                        📏 Preferred Measuring Unit (माप की इकाई चुनें)
+                      </span>
+                      <p className="text-2xs text-gray-500 mt-0.5">
+                        Select how you measure grain. Auto-converts to official Quintals for MSP calculation.
+                      </p>
+                    </div>
+                    <span className="text-3xs font-bold text-emerald-800 bg-white px-2.5 py-1 rounded-full border border-emerald-300 shadow-2xs">
+                      {MEASURING_UNITS.find(u => u.id === activeUnit)?.hint}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    {MEASURING_UNITS.map((unit) => (
+                      <button
+                        key={unit.id}
+                        type="button"
+                        onClick={() => handleGlobalUnitChange(unit.id)}
+                        className={`p-2.5 rounded-xl text-center border-2 transition-all cursor-pointer ${
+                          activeUnit === unit.id
+                            ? 'border-brand bg-emerald-800 text-white font-extrabold shadow-md scale-[1.02]'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/50'
+                        }`}
+                      >
+                        <div className="text-xs font-bold">{unit.name}</div>
+                        <div className={`text-3xs mt-0.5 ${activeUnit === unit.id ? 'text-emerald-200' : 'text-gray-400'}`}>
+                          {unit.id === 'QUINTAL' ? '100 kg' : unit.id === 'KG' ? '0.01 Q' : unit.id === 'TONNE' ? '10 Q' : unit.id === 'BAG_50' ? '50 kg / 0.5 Q' : '40 kg / 0.4 Q'}
                         </div>
-                      ))}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  
+                  {/* LEFT: CROP SELECTION CATALOG (5 Columns on desktop) */}
+                  <div className="lg:col-span-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-gray-800 uppercase tracking-wider block">
+                        Select Crop(s) to Deliver:
+                      </label>
+                      <span className="text-2xs text-gray-500 font-semibold">Click to select multiple</span>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {CROPS.map((crop) => {
+                        const isSelected = selectedCropsList.some(item => item.crop.code === crop.code);
+                        return (
+                          <div
+                            key={crop.code}
+                            onClick={() => handleToggleCrop(crop)}
+                            className={`p-3.5 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${
+                              isSelected
+                                ? 'border-brand bg-emerald-50/70 shadow-sm font-bold ring-2 ring-emerald-300'
+                                : 'border-gray-200 hover:border-gray-300 bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold transition-colors ${
+                                isSelected ? 'bg-brand text-white' : 'border-2 border-gray-300 bg-white text-transparent'
+                              }`}>
+                                ✓
+                              </div>
+                              <div>
+                                <span className="text-xs text-gray-900 block font-bold">{crop.name}</span>
+                                <span className="text-3xs text-gray-400 font-mono">Code: {crop.code}</span>
+                              </div>
+                            </div>
+                            <span className="text-xs font-extrabold text-emerald-900 bg-emerald-100/90 px-2.5 py-1 rounded-lg border border-emerald-300">
+                              MSP ₹{crop.msp.toLocaleString('en-IN')}/Q
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* Weight Input & MSP Calculator */}
-                  <div className="flex flex-col justify-between space-y-4">
-                    <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                      <label className="block text-xs font-bold text-gray-800 mb-1">
-                        Estimated Grain Load to Deliver (Quintals):
+                  {/* RIGHT: SELECTED CROPS QUANTITIES & MSP BREAKDOWN (7 Columns on desktop) */}
+                  <div className="lg:col-span-7 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-gray-800 uppercase tracking-wider block">
+                        Enter Load per Selected Crop:
                       </label>
-                      <p className="text-2xs text-gray-500 mb-3">1 Quintal = 100 kg. Minimum load 1 Q.</p>
+                      <span className="text-2xs font-bold text-emerald-800">
+                        {selectedCropsList.length} Crop{selectedCropsList.length > 1 ? 's' : ''} in Consignment
+                      </span>
+                    </div>
 
-                      <div className="relative">
-                        <input
-                          type="number"
-                          min="1"
-                          max={remainingSlotCap}
-                          value={weightQuintals}
-                          onChange={(e) => setWeightQuintals(e.target.value)}
-                          className="w-full pl-4 pr-16 py-3 border-2 border-emerald-300 rounded-xl focus:border-brand focus:outline-none font-bold text-lg text-emerald-950"
-                          placeholder="Enter Quantity"
-                        />
-                        <span className="absolute right-4 top-3.5 text-xs font-bold text-gray-400">Quintals</span>
+                    {/* Crop Load Inputs List */}
+                    <div className="space-y-3">
+                      {selectedCropsList.map((item) => {
+                        const qValue = convertToQuintals(item.quantity, item.unit);
+                        const subtotal = Math.round(qValue * item.crop.msp);
+                        const currentUnitObj = MEASURING_UNITS.find(u => u.id === item.unit) || MEASURING_UNITS[0];
+
+                        return (
+                          <div
+                            key={item.crop.code}
+                            className="p-4 bg-gray-50/90 rounded-2xl border-2 border-emerald-200/80 shadow-2xs space-y-3"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">📦</span>
+                                <div>
+                                  <h4 className="font-extrabold text-gray-900 text-sm">{item.crop.name}</h4>
+                                  <span className="text-2xs text-emerald-800 font-bold">
+                                    Official MSP: ₹{item.crop.msp.toLocaleString('en-IN')}/Q
+                                  </span>
+                                </div>
+                              </div>
+
+                              {selectedCropsList.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleCrop(item.crop)}
+                                  className="text-red-500 hover:text-red-700 text-xs font-bold p-1 rounded hover:bg-red-50 cursor-pointer"
+                                  title="Remove crop"
+                                >
+                                  ✕ Remove
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Quantity Input + Unit Picker */}
+                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                              <div className="sm:col-span-7 relative">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  value={item.quantity}
+                                  onChange={(e) => handleUpdateCropQuantity(item.crop.code, e.target.value)}
+                                  placeholder="Enter quantity"
+                                  className="w-full pl-3 pr-20 py-2.5 border-2 border-emerald-300 rounded-xl focus:border-brand focus:outline-none font-bold text-base text-gray-900 bg-white"
+                                />
+                                <span className="absolute right-3 top-2.5 text-xs font-bold text-gray-500">
+                                  {currentUnitObj.short}
+                                </span>
+                              </div>
+
+                              <div className="sm:col-span-5">
+                                <select
+                                  value={item.unit}
+                                  onChange={(e) => handleUpdateCropUnit(item.crop.code, e.target.value)}
+                                  className="w-full py-2.5 px-3 border-2 border-gray-300 rounded-xl text-xs font-bold text-gray-700 bg-white focus:border-brand focus:outline-none cursor-pointer"
+                                >
+                                  {MEASURING_UNITS.map(u => (
+                                    <option key={u.id} value={u.id}>{u.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Live Conversion Pill & Subtotal */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-200/80 text-xs">
+                              <div className="flex items-center gap-1.5 text-gray-600 font-medium">
+                                <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-md font-mono font-bold text-2xs">
+                                  ↳ = {qValue} Quintals ({Math.round(qValue * 100)} kg)
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-2xs text-gray-400 block">Crop Subtotal:</span>
+                                <span className="font-extrabold text-emerald-900 font-mono text-sm">
+                                  ₹{subtotal.toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Consolidated Financial Summary Card */}
+                    <div className="p-5 bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-950 text-white rounded-2xl shadow-lg space-y-3">
+                      <div className="flex justify-between items-center text-xs text-emerald-200">
+                        <span>Total Combined Grain Load:</span>
+                        <span className="font-mono font-bold text-base text-white">
+                          {totalCombinedQuintals.toFixed(2)} Quintals ({Math.round(totalCombinedQuintals * 100)} kg)
+                        </span>
                       </div>
 
-                      {/* Quick Weight Chips */}
-                      <div className="flex gap-2 mt-3">
-                        {[25, 45, 60, 100].map((q) => (
-                          <button
-                            key={q}
-                            type="button"
-                            onClick={() => setWeightQuintals(String(q))}
-                            className="px-2.5 py-1 rounded-md text-2xs font-bold bg-white hover:bg-emerald-100 border border-gray-200 text-gray-700 transition-colors cursor-pointer"
-                          >
-                            {q} Q
-                          </button>
-                        ))}
+                      <div className="flex justify-between items-center text-xs text-emerald-200">
+                        <span>Shift Allotment Status:</span>
+                        <span className={`font-bold ${totalCombinedQuintals > remainingSlotCap ? 'text-red-400 font-extrabold' : 'text-emerald-300'}`}>
+                          {totalCombinedQuintals > remainingSlotCap ? '⚠️ Capacity Exceeded' : `✓ ${Math.max(0, remainingSlotCap - totalCombinedQuintals).toFixed(1)} Q Remaining`}
+                        </span>
+                      </div>
+
+                      {/* Progress bar against slot cap */}
+                      <div className="w-full bg-emerald-950/80 h-2 rounded-full overflow-hidden border border-emerald-800">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            totalCombinedQuintals > remainingSlotCap ? 'bg-red-500' : 'bg-emerald-400'
+                          }`}
+                          style={{ width: `${Math.min(100, (totalCombinedQuintals / (remainingSlotCap || 1)) * 100)}%` }}
+                        />
+                      </div>
+
+                      <div className="pt-3 border-t border-emerald-800/80 flex justify-between items-center">
+                        <div>
+                          <span className="text-2xs font-extrabold uppercase tracking-wider text-emerald-300 block">
+                            TOTAL ESTIMATED DIRECT MSP PAYOUT:
+                          </span>
+                          <span className="text-3xs text-emerald-300/80 italic">
+                            *Auto-disbursed via DBT upon weighbridge approval
+                          </span>
+                        </div>
+                        <span className="text-2xl font-black text-yellow-300 font-mono">
+                          ₹{totalCombinedPayout.toLocaleString('en-IN')}
+                        </span>
                       </div>
 
                       {/* Over-capacity alert */}
-                      {Number(weightQuintals) > remainingSlotCap && (
-                        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs font-bold text-red-700 flex items-center gap-2">
+                      {totalCombinedQuintals > remainingSlotCap && (
+                        <div className="mt-2 p-2.5 bg-red-900/80 border border-red-500 rounded-xl text-xs font-bold text-red-200 flex items-center gap-2">
                           <span>⛔</span>
-                          <span>Exceeds remaining shift capacity of {remainingSlotCap} Q!</span>
+                          <span>
+                            Total load ({totalCombinedQuintals} Q) exceeds remaining shift capacity of {remainingSlotCap} Q! Please adjust quantities.
+                          </span>
                         </div>
                       )}
                     </div>
 
-                    {/* Financial Estimator Card */}
-                    <div className="p-4 bg-gradient-to-br from-emerald-900 to-teal-950 text-white rounded-xl shadow-inner space-y-2">
-                      <div className="flex justify-between items-center text-xs text-emerald-200">
-                        <span>Guaranteed MSP Base Rate:</span>
-                        <span className="font-mono font-bold">₹{selectedCrop.msp}/Quintal</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs text-emerald-200">
-                        <span>Estimated Load:</span>
-                        <span className="font-mono font-bold">{weightQuintals || 0} Quintals</span>
-                      </div>
-                      <div className="pt-2 border-t border-emerald-800 flex justify-between items-center">
-                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                          Estimated Direct MSP Payout:
-                        </span>
-                        <span className="text-xl font-extrabold text-yellow-300">
-                          ₹{estimatedPayout.toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                      <p className="text-3xs text-emerald-300/80 italic mt-1">
-                        *Subject to FAQ moisture assay & weighbridge verification at Mandi.
-                      </p>
-                    </div>
                   </div>
                 </div>
 
@@ -1472,7 +1713,7 @@ export default function SlotBooking() {
                   <button
                     type="button"
                     onClick={handleCreateBooking}
-                    disabled={isSubmitting || Number(weightQuintals) <= 0 || Number(weightQuintals) > remainingSlotCap}
+                    disabled={isSubmitting || totalCombinedQuintals <= 0 || totalCombinedQuintals > remainingSlotCap}
                     className="bg-brand hover:bg-brand-dark text-white px-10 py-4 rounded-xl font-extrabold text-base transition-all shadow-xl flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] cursor-pointer"
                   >
                     {isSubmitting ? (
@@ -1483,7 +1724,7 @@ export default function SlotBooking() {
                     ) : (
                       <>
                         <span>🎫</span>
-                        <span>Confirm Slot & Generate Digital Gate Pass</span>
+                        <span>Confirm Multi-Crop Slot & Generate Digital Gate Pass</span>
                       </>
                     )}
                   </button>
@@ -1597,7 +1838,7 @@ export default function SlotBooking() {
                     <div>
                       <span className="text-gray-400 block text-2xs">Allotted Load:</span>
                       <span className="font-extrabold text-emerald-800 text-sm">
-                        {activePassModal.estimated_weight_quintals} Quintals
+                        {activePassModal.estimated_weight_quintals} Quintals ({Math.round(activePassModal.estimated_weight_quintals * 100)} kg)
                       </span>
                     </div>
                     <div>
@@ -1605,6 +1846,35 @@ export default function SlotBooking() {
                       <span className="font-semibold text-gray-800">{activePassModal.farmer_phone}</span>
                     </div>
                   </div>
+
+                  {/* Multi-Crop Consignment Item Breakdown */}
+                  {Array.isArray(activePassModal.crops) && activePassModal.crops.length > 0 && (
+                    <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-1.5 mt-2">
+                      <span className="text-2xs font-extrabold text-emerald-950 uppercase tracking-wider block">
+                        🌾 Multi-Crop Consignment Breakdown:
+                      </span>
+                      <div className="space-y-1">
+                        {activePassModal.crops.map((c, i) => (
+                          <div key={i} className="flex justify-between items-center text-2xs border-b border-emerald-100/60 pb-0.5 last:border-0">
+                            <span className="font-semibold text-gray-800">
+                              • {c.crop_name} ({c.quantity} {c.unit || 'Q'} = {c.weight_quintals} Q)
+                            </span>
+                            <span className="font-mono font-bold text-emerald-900">
+                              ₹{(c.estimated_payout || (c.weight_quintals * (c.msp_rate || 2275))).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {activePassModal.total_estimated_payout ? (
+                        <div className="pt-1.5 border-t border-emerald-200 flex justify-between items-center text-2xs font-bold">
+                          <span className="text-emerald-950">Estimated Total MSP Payout:</span>
+                          <span className="font-mono text-emerald-900 text-sm font-black">
+                            ₹{activePassModal.total_estimated_payout.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               </div>
 

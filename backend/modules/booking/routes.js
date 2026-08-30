@@ -193,7 +193,9 @@ router.post('/create', async (req, res) => {
       shift: slot.slot_name,
       date: bookingDate,
       crop: crop_type || 'Wheat (Sharbati A-Grade)',
+      crops: Array.isArray(req.body.crops) ? req.body.crops : [],
       weight_quintals: weight,
+      total_estimated_payout: req.body.total_estimated_payout || 0,
       verified_at: new Date().toISOString()
     };
 
@@ -219,7 +221,9 @@ router.post('/create', async (req, res) => {
       slot_name: slot.slot_name,
       booking_date: bookingDate,
       crop_type: crop_type || 'Wheat (Sharbati A-Grade)',
+      crops: Array.isArray(req.body.crops) ? req.body.crops : [],
       estimated_weight_quintals: weight,
+      total_estimated_payout: req.body.total_estimated_payout || 0,
       status: 'confirmed',
       qr_code_data: qrDataUrl,
       created_at: new Date()
