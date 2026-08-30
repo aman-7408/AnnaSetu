@@ -60,12 +60,16 @@ const FALLBACK_CENTRES = [
 ];
 
 function getDefaultSlotsForCentre(centre, date) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  if (date && date < todayStr) {
+    return [];
+  }
   const cap = Math.round((centre?.daily_capacity_quintals || 1200) / 3);
   return [
     {
       slot_code: 'SLOT_1_MORNING',
       slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)',
-      date: date || new Date().toISOString().split('T')[0],
+      date: date || todayStr,
       max_capacity_quintals: cap,
       booked_capacity_quintals: Math.round(cap * 0.4),
       status: 'available'
@@ -73,7 +77,7 @@ function getDefaultSlotsForCentre(centre, date) {
     {
       slot_code: 'SLOT_2_AFTERNOON',
       slot_name: 'Slot 2: Afternoon (12:00 PM - 03:00 PM)',
-      date: date || new Date().toISOString().split('T')[0],
+      date: date || todayStr,
       max_capacity_quintals: cap,
       booked_capacity_quintals: Math.round(cap * 0.6),
       status: 'available'
@@ -81,7 +85,7 @@ function getDefaultSlotsForCentre(centre, date) {
     {
       slot_code: 'SLOT_3_EVENING',
       slot_name: 'Slot 3: Evening (03:00 PM - 06:00 PM)',
-      date: date || new Date().toISOString().split('T')[0],
+      date: date || todayStr,
       max_capacity_quintals: cap,
       booked_capacity_quintals: Math.round(cap * 0.2),
       status: 'available'
@@ -263,6 +267,11 @@ export default function SlotBooking() {
   };
 
   const fetchSlots = async (centreId, date) => {
+    if (!date || date < todayLocal) {
+      setSlots([]);
+      setSelectedSlot(null);
+      return;
+    }
     try {
       setLoadingSlots(true);
       let res;
@@ -282,11 +291,11 @@ export default function SlotBooking() {
       }
       const defaults = getDefaultSlotsForCentre(selectedCentre, date);
       setSlots(defaults);
-      setSelectedSlot(defaults[0]);
+      setSelectedSlot(defaults.length > 0 ? defaults[0] : null);
     } catch {
       const defaults = getDefaultSlotsForCentre(selectedCentre, date);
       setSlots(defaults);
-      setSelectedSlot(defaults[0]);
+      setSelectedSlot(defaults.length > 0 ? defaults[0] : null);
     } finally {
       setLoadingSlots(false);
     }
@@ -542,9 +551,10 @@ export default function SlotBooking() {
     ]).values()
   );
 
+  const isPastDate = Boolean(selectedDate && selectedDate < todayLocal);
   const isVerified = Boolean(selectedFarmer && selectedFarmer.name !== 'Unregistered');
   const isStep1Complete = Boolean(isVerified && selectedFarmer?.aadhar && selectedCentre);
-  const isStep2Complete = Boolean(isStep1Complete && selectedDate && selectedSlot && remainingSlotCap > 0);
+  const isStep2Complete = Boolean(isStep1Complete && selectedDate && !isPastDate && selectedSlot && remainingSlotCap > 0);
 
   return (
     <div className="py-8 px-4 sm:px-6 max-w-6xl mx-auto font-sans">
@@ -1174,15 +1184,29 @@ export default function SlotBooking() {
                         setSelectedDate(e.target.value);
                         setSelectedSlot(null);
                       }}
-                      className="w-full sm:w-64 border-2 border-emerald-300 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-brand cursor-pointer shadow-sm"
+                      className={`w-full sm:w-64 border-2 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:outline-none focus:border-brand cursor-pointer shadow-sm ${
+                        isPastDate ? 'border-red-400 bg-red-50 text-red-900' : 'border-emerald-300'
+                      }`}
                     />
+
+                    {isPastDate && (
+                      <div className="mt-3 p-3.5 bg-red-50 border-2 border-red-200 rounded-xl text-xs font-bold text-red-700 flex items-center gap-2.5 animate-fade-in-down">
+                        <span className="text-xl">⛔</span>
+                        <div>
+                          <p className="font-extrabold text-red-900">Cannot book past date ({selectedDate})</p>
+                          <p className="text-2xs font-semibold text-red-700 mt-0.5">
+                            Grain procurement intake shifts can only be booked for today ({todayLocal}) or upcoming dates within the 7-day window.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* === HIDDEN SHIFT VAULT === */}
                 <div 
                   className={`transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] transform origin-top ${
-                    selectedDate 
+                    selectedDate && !isPastDate
                       ? 'opacity-100 translate-y-0 scale-y-100 max-h-[2000px] pointer-events-auto' 
                       : 'opacity-0 translate-y-8 scale-y-95 max-h-0 overflow-hidden pointer-events-none'
                   }`}

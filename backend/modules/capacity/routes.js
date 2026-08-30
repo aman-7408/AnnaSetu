@@ -46,6 +46,15 @@ router.get('/centres/:id/slots', async (req, res) => {
   try {
     const { id } = req.params;
     const date = req.query.date || new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
+
+    if (date < today) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot fetch or schedule intake slots for past dates. Please select today or a future date.',
+        slots: []
+      });
+    }
 
     let slots = await Slot.find({ centre_id: id, date }).sort({ slot_code: 1 });
     if (!slots || slots.length === 0) {
