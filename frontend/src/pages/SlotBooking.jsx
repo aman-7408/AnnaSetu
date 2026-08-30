@@ -193,6 +193,21 @@ export default function SlotBooking() {
   const estimatedPayout = Math.round(weightInQuintals * (selectedCrop?.msp || 2275));
   const activeUnitObj = MEASURING_UNITS.find(u => u.id === activeUnit) || MEASURING_UNITS[0];
 
+  const getUnitRate = (mspPerQuintal, unitId = activeUnit) => {
+    const unitObj = MEASURING_UNITS.find(u => u.id === unitId) || MEASURING_UNITS[0];
+    const rate = mspPerQuintal * unitObj.toQuintals;
+    if (unitId === 'KG') {
+      return `₹${rate.toFixed(2)}/kg`;
+    } else if (unitId === 'TONNE') {
+      return `₹${Math.round(rate).toLocaleString('en-IN')}/MT`;
+    } else if (unitId === 'BAG_50') {
+      return `₹${rate % 1 === 0 ? rate : rate.toFixed(1)}/Bag`;
+    } else if (unitId === 'MAUND_40') {
+      return `₹${Math.round(rate).toLocaleString('en-IN')}/Mann`;
+    }
+    return `₹${Math.round(rate).toLocaleString('en-IN')}/Q`;
+  };
+
   // Submission & Result States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -1480,9 +1495,16 @@ export default function SlotBooking() {
                               </div>
                               <span className="text-xs text-gray-900 font-bold">{crop.name}</span>
                             </div>
-                            <span className="text-xs font-extrabold text-emerald-900 bg-emerald-100/90 px-2.5 py-1 rounded-lg border border-emerald-300">
-                              MSP ₹{crop.msp.toLocaleString('en-IN')}/Q
-                            </span>
+                            <div className="text-right">
+                              <span className="text-xs font-extrabold text-emerald-900 bg-emerald-100/90 px-2.5 py-1 rounded-lg border border-emerald-300 block">
+                                MSP {getUnitRate(crop.msp, activeUnit)}
+                              </span>
+                              {activeUnit !== 'QUINTAL' && (
+                                <span className="text-3xs text-gray-400 block mt-0.5 font-mono">
+                                  (₹{crop.msp.toLocaleString('en-IN')}/Q)
+                                </span>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
@@ -1528,7 +1550,7 @@ export default function SlotBooking() {
                       {/* Quick Weight Chips (Adapted to Active Unit) */}
                       <div>
                         <span className="text-3xs text-gray-400 font-bold uppercase tracking-wider block mb-1.5">
-                          Quick Presets:
+                          Quick Presets ({activeUnitObj.short}):
                         </span>
                         <div className="flex gap-2 flex-wrap">
                           {(activeUnit === 'BAG_50'
@@ -1569,12 +1591,23 @@ export default function SlotBooking() {
                         <span className="font-bold text-white">{selectedCrop.name}</span>
                       </div>
                       <div className="flex justify-between items-center text-xs text-emerald-200">
-                        <span>Guaranteed MSP Base Rate:</span>
-                        <span className="font-mono font-bold">₹{selectedCrop.msp.toLocaleString('en-IN')}/Quintal</span>
+                        <span>Guaranteed MSP Rate:</span>
+                        <div className="text-right">
+                          <span className="font-mono font-bold text-white text-sm">
+                            {getUnitRate(selectedCrop.msp, activeUnit)}
+                          </span>
+                          {activeUnit !== 'QUINTAL' && (
+                            <span className="text-3xs text-emerald-300/80 block font-mono">
+                              (Govt Base: ₹{selectedCrop.msp.toLocaleString('en-IN')}/Q)
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex justify-between items-center text-xs text-emerald-200">
-                        <span>Calculated Net Weight:</span>
-                        <span className="font-mono font-bold text-white">{weightInQuintals} Quintals</span>
+                        <span>Declared Delivery Quantity:</span>
+                        <span className="font-mono font-bold text-white">
+                          {quantityInput || 0} {activeUnitObj.short} ({weightInQuintals} Quintals)
+                        </span>
                       </div>
 
                       {/* Progress Bar */}
