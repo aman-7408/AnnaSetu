@@ -95,8 +95,9 @@ router.post('/create-from-procurement', async (req, res) => {
 
     // Fetch verified bank details from Farmer database
     const farmer = await Farmer.findOne({ aadhar_number: farmer_aadhar });
-    const bankAccount = farmer?.bank_account_number || '000012345678';
-    const bankIfsc = farmer?.bank_ifsc || 'SBIN0001234';
+    if (!farmer) return res.status(404).json({ error: 'Farmer profile not found for this Aadhaar' });
+    const bankAccount = farmer.bank_account_number;
+    const bankIfsc = farmer.bank_ifsc;
 
     let payment = await Payment.findOne({ token_id });
 
@@ -115,16 +116,16 @@ router.post('/create-from-procurement', async (req, res) => {
         transaction_utr: generateUTR(),
         token_id,
         farmer_aadhar,
-        farmer_name: farmer_name || farmer?.name || 'Aman Kumar',
-        farmer_phone: farmer_phone || farmer?.phone || '9876543210',
-        crop_type: crop_type || 'Wheat (Sharbati A-Grade)',
+        farmer_name: farmer_name || farmer.name,
+        farmer_phone: farmer_phone || farmer.phone,
+        crop_type: crop_type,
         net_weight_quintals: weight,
         msp_rate: rate,
         gross_amount: grossAmount,
         bank_account_number: bankAccount,
         bank_ifsc: bankIfsc,
-        bank_name: 'State Bank of India',
-        j_form_number: j_form_number || 'JF-2026-98124',
+        bank_name: 'Linked Bank Account',
+        j_form_number: j_form_number,
         payment_status: 'PAID',
         disbursed_at: new Date()
       });

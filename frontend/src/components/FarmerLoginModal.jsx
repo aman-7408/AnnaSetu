@@ -203,7 +203,7 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
 
               {/* Test Data Minimal Helper Box */}
               <div className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200 text-xs space-y-1.5">
-                <span className="font-semibold text-gray-500 block text-3xs uppercase tracking-wider">Test Farmer Aadhaar (Universal OTP: 123456):</span>
+                <span className="font-semibold text-gray-500 block text-3xs uppercase tracking-wider">Test Farmer Aadhaar (OTP: 123456):</span>
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"

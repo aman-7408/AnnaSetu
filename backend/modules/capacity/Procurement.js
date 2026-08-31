@@ -2,10 +2,10 @@ const mongoose = require('mongoose');
 
 const procurementSchema = new mongoose.Schema({
   token_id: { type: String, required: true, unique: true },
-  farmer_aadhar: { type: String, required: true, default: '111122223333' },
-  farmer_name: { type: String, required: true, default: 'Aman Kumar' },
-  farmer_phone: { type: String, default: '+91 98765 43210' },
-  crop_type: { type: String, default: 'Wheat (Sharbati A-Grade)' },
+  farmer_aadhar: { type: String, required: true },
+  farmer_name: { type: String, required: true },
+  farmer_phone: { type: String, required: true },
+  crop_type: { type: String, required: true },
   centre_name: { type: String, required: true },
   current_stage: { type: Number, default: 1, min: 1, max: 5 }, // 1 to 5
   
@@ -30,7 +30,7 @@ const procurementSchema = new mongoose.Schema({
   weighed_at: { type: Date },
 
   // Stage 5: Payment Approval & J-Form
-  msp_rate: { type: Number, default: 2275 },
+  msp_rate: { type: Number },
   gross_payout: { type: Number, default: 0 },
   j_form_number: { type: String, default: '' },
   approved_at: { type: Date },

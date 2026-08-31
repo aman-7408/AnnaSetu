@@ -564,8 +564,8 @@ async function run120PointAudit() {
   assert(r101.status === 400 || r101.status === 500, 'Invalid MongoDB ObjectId handled gracefully');
 
   const [cRes1, cRes2] = await Promise.all([
-    request('POST', '/api/capacity/procurements/advance-stage', { token_id: activeTokenId, target_stage: 5, details: { msp_rate: 2275 } }),
-    request('POST', '/api/capacity/procurements/advance-stage', { token_id: activeTokenId, target_stage: 5, details: { msp_rate: 2275 } })
+    request('POST', '/api/capacity/procurements/advance-stage', { token_id: activeTokenId, target_stage: 5, details: { msp_rate: 2275, j_form_number: 'N/A' } }),
+    request('POST', '/api/capacity/procurements/advance-stage', { token_id: activeTokenId, target_stage: 5, details: { msp_rate: 2275, j_form_number: 'N/A' } })
   ]);
   assert(cRes1.status === 200 && cRes2.status === 200, 'Concurrent stage advancements executed safely without database crash');
 

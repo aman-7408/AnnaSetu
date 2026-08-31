@@ -42,21 +42,21 @@ const TEMPLATES = {
 
   queue_update: (data) => ({
     title: 'Mandi Gate Check-in Completed',
-    message: `Entry cleared and verified against Gate Pass #${data.gate_pass || 'GP-2026-8831'}.`,
+    message: `Entry cleared and verified against Gate Pass #${data.gate_pass || 'N/A'}.`,
     action_hint: 'Proceed to Quality Assaying station for moisture check.',
     category: 'queue'
   }),
 
   quality_passed: (data) => ({
     title: 'Quality Lab Test Passed!',
-    message: `Grain lot verified: ${data.grade || 'Grade A FAQ'} with ${data.moisture || '11.6%'} moisture content.`,
+    message: `Grain lot verified: ${data.grade || 'Unknown Grade'} with ${data.moisture || 'Unknown'} moisture content.`,
     action_hint: 'Proceed to Weighbridge station for gross weight calculation.',
     category: 'queue'
   }),
 
   weighed: (data) => ({
     title: 'Weighbridge Weight Confirmed',
-    message: `Net Grain Weight: ${data.net_weight || '45.20 Quintals'} (${data.gunny_bags || '90 Bags'} packaged).`,
+    message: `Net Grain Weight: ${data.net_weight || 'N/A'} (${data.gunny_bags || 'N/A'} packaged).`,
     action_hint: 'Proceed to Mandi Manager desk for J-Form approval and DBT payout release.',
     category: 'queue'
   }),
@@ -70,14 +70,14 @@ const TEMPLATES = {
 
   payment_initiated: (data) => ({
     title: 'J-Form Approved — DBT Processing',
-    message: `J-Form #${data.j_form_no || 'JF-2026-98124'} generated for Rs. ${data.amount || '1,02,830'} (${data.quantity || '45.20 Quintals'} Grade A Wheat @ Rs. 2,275 MSP).`,
+    message: `J-Form #${data.j_form_no || 'N/A'} generated for Rs. ${data.amount || '0'} (${data.quantity || '0 Quintals'} @ Rs. ${data.msp_rate || 'MSP'}).`,
     action_hint: 'Govt PFMS Direct Benefit Transfer is in progress.',
     category: 'payment'
   }),
 
   payment_credited: (data) => ({
     title: 'Money Sent to Your Bank via DBT!',
-    message: `Rs. ${data.amount || '1,02,830'} has arrived in your ${data.bank_name || 'State Bank of India'} Account (ending in ${data.account_last4 || '4412'}).`,
+    message: `Rs. ${data.amount || '0'} has arrived in your ${data.bank_name || 'Bank'} Account (ending in ${data.account_last4 || 'N/A'}).`,
     action_hint: 'Official J-Form receipt available for download.',
     category: 'payment'
   }),
@@ -153,7 +153,7 @@ async function sendNotification({
 /**
  * Seed realistic demo notifications for evaluation
  */
-async function seedDemoNotifications(farmer_id = '111122223333', name = 'Aman Kumar', phone = '9876543210') {
+async function seedDemoNotifications(farmer_id, name, phone) {
   await Notification.deleteMany({ farmer_id });
 
   const seedEvents = [

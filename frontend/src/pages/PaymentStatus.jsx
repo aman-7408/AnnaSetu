@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from "react-i18next";
+
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const API_BASE = (import.meta.env.VITE_API_URL || '') + '/api/payments';
@@ -43,7 +45,7 @@ export default function PaymentStatus() {
     const gross = selectedReceipt.gross_amount || 102830;
     const weight = selectedReceipt.net_weight_quintals || 45.20;
     const rate = selectedReceipt.msp_rate || 2275;
-    const bankAcc = selectedReceipt.bank_account_number || '000012345678';
+    const bankAcc = selectedReceipt.bank_account_number || 'N/A';
     const ifsc = selectedReceipt.bank_ifsc || 'SBIN0001234';
 
     return (
@@ -92,7 +94,7 @@ export default function PaymentStatus() {
               </div>
               <div>
                 <span className="text-gray-400 font-semibold block text-3xs uppercase">J-Form Reference</span>
-                <span className="font-extrabold text-emerald-800 text-sm font-mono">{selectedReceipt.j_form_number || 'JF-2026-98124'}</span>
+                <span className="font-extrabold text-emerald-800 text-sm font-mono">{selectedReceipt.j_form_number || 'N/A'}</span>
                 <span className="text-gray-500 block text-3xs font-mono mt-0.5">Token: {selectedReceipt.token_id || 'AS-2026-WHT-7821'}</span>
               </div>
             </div>

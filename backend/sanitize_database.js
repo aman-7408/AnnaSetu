@@ -27,20 +27,9 @@ async function sanitizeDatabase() {
     await db.collection('payments').deleteMany({});
     console.log('  🧹 [payments] Cleared 100% of test records.');
 
-    // 2. Reset Procurements to benchmark demo token
+    // 2. Wipe Procurements
     await db.collection('procurements').deleteMany({});
-    await db.collection('procurements').insertOne({
-      token_id: 'AS-2026-WHT-7821',
-      farmer_name: 'Aman Kumar',
-      farmer_phone: '+91 98765 43210',
-      crop_type: 'Wheat (Sharbati A-Grade)',
-      centre_name: 'Meerut Central Agro Warehouse',
-      current_stage: 1,
-      slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)',
-      slot_date: new Date().toISOString().split('T')[0],
-      updated_at: new Date()
-    });
-    console.log('  ✅ [procurements] Reset demo token AS-2026-WHT-7821 to Stage 1 (Slot Active).');
+    console.log('  🧹 [procurements] Cleared 100% of test records.');
 
     // 3. Reset Centres to default baseline
     await db.collection('centres').deleteMany({});
@@ -52,7 +41,7 @@ async function sanitizeDatabase() {
         location: 'Ferozepur Road, Ludhiana, Punjab',
         daily_capacity_quintals: 1500,
         max_designed_capacity_quintals: 2500,
-        booked_capacity_quintals: 450,
+        booked_capacity_quintals: 0,
         manager_name: 'Sarabpreet Singh Khanna',
         manager_phone: '+91 98123 45678',
         operating_hours: '09:00 AM - 06:00 PM',
@@ -67,7 +56,7 @@ async function sanitizeDatabase() {
         location: 'Bypass Road, Meerut, Uttar Pradesh',
         daily_capacity_quintals: 1200,
         max_designed_capacity_quintals: 2000,
-        booked_capacity_quintals: 900,
+        booked_capacity_quintals: 0,
         manager_name: 'Vishesh Tiwari',
         manager_phone: '+91 98765 43210',
         operating_hours: '09:00 AM - 06:00 PM',
@@ -82,7 +71,7 @@ async function sanitizeDatabase() {
         location: 'NH-27 Terminal, Guwahati, Assam',
         daily_capacity_quintals: 900,
         max_designed_capacity_quintals: 1500,
-        booked_capacity_quintals: 450,
+        booked_capacity_quintals: 0,
         manager_name: 'Saishri Bidwai',
         manager_phone: '+91 94350 12345',
         operating_hours: '09:00 AM - 06:00 PM',
@@ -111,7 +100,7 @@ async function sanitizeDatabase() {
           slot_code: 'SLOT_1_MORNING',
           slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)',
           max_capacity_quintals: slotCap,
-          booked_capacity_quintals: Math.round(slotCap * 0.4),
+          booked_capacity_quintals: 0,
           status: 'available',
           created_at: new Date()
         },
@@ -122,7 +111,7 @@ async function sanitizeDatabase() {
           slot_code: 'SLOT_2_AFTERNOON',
           slot_name: 'Slot 2: Afternoon (12:00 PM - 03:00 PM)',
           max_capacity_quintals: slotCap,
-          booked_capacity_quintals: Math.round(slotCap * 0.6),
+          booked_capacity_quintals: 0,
           status: 'available',
           created_at: new Date()
         },
@@ -133,7 +122,7 @@ async function sanitizeDatabase() {
           slot_code: 'SLOT_3_EVENING',
           slot_name: 'Slot 3: Evening (03:00 PM - 06:00 PM)',
           max_capacity_quintals: slotCap,
-          booked_capacity_quintals: Math.round(slotCap * 0.2),
+          booked_capacity_quintals: 0,
           status: 'available',
           created_at: new Date()
         }

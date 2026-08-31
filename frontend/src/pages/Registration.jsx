@@ -437,7 +437,7 @@ export default function Registration() {
               )}
               
               <div className="mt-5 pt-3 border-t border-gray-100 text-center text-[11px] text-gray-400 space-y-1">
-                <p className="font-bold text-gray-500">Test Aadhaar Numbers (Universal OTP: 123456):</p>
+                <p className="font-bold text-gray-500">Test Aadhaar Numbers (OTP: 123456):</p>
                 <p>• <span className="font-mono font-bold text-gray-700">111122223333</span> — Aman Kumar (Bihar)</p>
                 <p>• <span className="font-mono font-bold text-gray-700">222233334444</span> — Anusrita Deb (Tripura)</p>
                 <p>• <span className="font-mono font-bold text-gray-700">333344445555</span> — Anurag Ojha (UP)</p>
@@ -465,7 +465,9 @@ export default function Registration() {
                     <label className="block text-gray-700 font-bold mb-2 text-sm">Land Size (Acres)</label>
                     <input 
                       required
-                      type="text" 
+                      type="number"
+                      step="any"
+                      min="0.01" 
                       placeholder="e.g. 2.5"
                       className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand"
                       value={formData.land_size}

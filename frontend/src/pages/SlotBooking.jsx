@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from "react-i18next";
+
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
@@ -23,7 +25,7 @@ const FALLBACK_CENTRES = [
     location: 'Ferozepur Road, Ludhiana, Punjab',
     daily_capacity_quintals: 1500,
     max_designed_capacity_quintals: 2500,
-    booked_capacity_quintals: 450,
+    booked_capacity_quintals: 0,
     manager_name: 'Sarabpreet Singh Khanna',
     manager_phone: '+91 98123 45678',
     status: 'active',
@@ -37,11 +39,11 @@ const FALLBACK_CENTRES = [
     location: 'Bypass Road, Meerut, Uttar Pradesh',
     daily_capacity_quintals: 1200,
     max_designed_capacity_quintals: 2000,
-    booked_capacity_quintals: 900,
+    booked_capacity_quintals: 0,
     manager_name: 'Vishesh Tiwari',
     manager_phone: '+91 98765 43210',
-    status: 'divert_active',
-    alert_message: 'Heavy intake. Recommended to reroute to alternate Mandis.'
+    status: 'active',
+    alert_message: ''
   },
   {
     _id: '66c000000000000000000003',
@@ -51,7 +53,7 @@ const FALLBACK_CENTRES = [
     location: 'NH-27 Terminal, Guwahati, Assam',
     daily_capacity_quintals: 900,
     max_designed_capacity_quintals: 1500,
-    booked_capacity_quintals: 450,
+    booked_capacity_quintals: 0,
     manager_name: 'Saishri Bidwai',
     manager_phone: '+91 94350 12345',
     status: 'active',
@@ -67,7 +69,7 @@ function getDefaultSlotsForCentre(centre, date) {
       slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)',
       date: date || new Date().toISOString().split('T')[0],
       max_capacity_quintals: cap,
-      booked_capacity_quintals: Math.round(cap * 0.4),
+      booked_capacity_quintals: 0,
       status: 'available'
     },
     {
@@ -75,7 +77,7 @@ function getDefaultSlotsForCentre(centre, date) {
       slot_name: 'Slot 2: Afternoon (12:00 PM - 03:00 PM)',
       date: date || new Date().toISOString().split('T')[0],
       max_capacity_quintals: cap,
-      booked_capacity_quintals: Math.round(cap * 0.6),
+      booked_capacity_quintals: 0,
       status: 'available'
     },
     {
@@ -83,7 +85,7 @@ function getDefaultSlotsForCentre(centre, date) {
       slot_name: 'Slot 3: Evening (03:00 PM - 06:00 PM)',
       date: date || new Date().toISOString().split('T')[0],
       max_capacity_quintals: cap,
-      booked_capacity_quintals: Math.round(cap * 0.2),
+      booked_capacity_quintals: 0,
       status: 'available'
     }
   ];
@@ -265,6 +267,7 @@ export default function SlotBooking() {
           setCentres(data.centres);
           const match = data.centres.find(c => c._id === selectedCentre?._id) || data.centres[0];
           setSelectedCentre(match);
+          fetchSlots(match._id, selectedDate);
         }
       }
     } catch {
@@ -531,9 +534,9 @@ export default function SlotBooking() {
             p.token_id,
             {
               ...p,
-              j_form_number: matchedPayment?.j_form_number || 'JF-2026-98124',
-              gross_payout: matchedPayment?.gross_amount || Math.round((p.estimated_weight_quintals || 45) * (selectedCrop?.msp || 2275)),
-              transaction_utr: matchedPayment?.transaction_utr || 'UTR-2026-PFMS-920745',
+              j_form_number: matchedPayment?.j_form_number || 'N/A',
+              gross_payout: matchedPayment?.gross_amount || 0,
+              transaction_utr: matchedPayment?.transaction_utr || 'N/A',
               payment_status: 'PAID',
               payment_id: matchedPayment?.payment_id || null
             }
@@ -549,9 +552,9 @@ export default function SlotBooking() {
           centre_name: pay.centre_name || selectedCentre?.name || 'Procurement Mandi',
           booking_date: pay.disbursed_at ? new Date(pay.disbursed_at).toISOString().split('T')[0] : todayLocal,
           estimated_weight_quintals: pay.net_weight_quintals || 45,
-          j_form_number: pay.j_form_number || 'JF-2026-98124',
-          gross_payout: pay.gross_amount || 102375,
-          transaction_utr: pay.transaction_utr || 'UTR-2026-PFMS-920745',
+          j_form_number: pay.j_form_number || 'N/A',
+          gross_payout: pay.gross_amount || 0,
+          transaction_utr: pay.transaction_utr || 'N/A',
           payment_status: 'PAID',
           payment_id: pay.payment_id
         }
@@ -840,7 +843,7 @@ export default function SlotBooking() {
                     <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-gray-100 text-xs">
                       <div>
                         <span className="text-gray-400 block">J-Form Number:</span>
-                        <span className="font-mono font-bold text-emerald-900">{pass.j_form_number || 'JF-2026-98124'}</span>
+                        <span className="font-mono font-bold text-emerald-900">{pass.j_form_number || 'N/A'}</span>
                       </div>
                       <div>
                         <span className="text-gray-400 block">Gross Disbursed:</span>
@@ -1264,14 +1267,26 @@ export default function SlotBooking() {
                       const booked = slot.booked_capacity_quintals || 0;
                       const available = Math.max(0, max - booked);
                       const util = max > 0 ? Math.min(100, Math.max(0, Math.round((booked / max) * 100))) : 0;
+                      
+                      const todayDate = new Date().toISOString().split('T')[0];
+                      const isToday = selectedDate === todayDate;
+                      const currentHour = new Date().getHours();
+                      let isExpired = false;
+                      if (isToday) {
+                        if (slot.slot_code === 'SLOT_1_MORNING' && currentHour >= 9) isExpired = true;
+                        if (slot.slot_code === 'SLOT_2_AFTERNOON' && currentHour >= 12) isExpired = true;
+                        if (slot.slot_code === 'SLOT_3_EVENING' && currentHour >= 15) isExpired = true;
+                      }
+
                       const isFull = available <= 0;
+                      const isDisabled = isFull || isExpired;
 
                       return (
                         <div
                           key={slot.slot_code}
-                          onClick={() => !isFull && setSelectedSlot(slot)}
+                          onClick={() => !isDisabled && setSelectedSlot(slot)}
                           className={`rounded-xl p-5 border-2 transition-all relative ${
-                            isFull
+                            isDisabled
                               ? 'bg-gray-100 border-gray-200 opacity-60 cursor-not-allowed'
                               : isSelected
                               ? 'border-brand bg-emerald-50/50 shadow-md ring-2 ring-emerald-300 cursor-pointer'
@@ -1281,6 +1296,16 @@ export default function SlotBooking() {
                           {isSelected && (
                             <div className="absolute top-3 right-3 w-5 h-5 bg-brand text-white rounded-full flex items-center justify-center text-xs font-bold shadow">
                               ✓
+                            </div>
+                          )}
+                          {isExpired && (
+                            <div className="absolute top-3 right-3 bg-red-100 text-red-600 px-2 py-1 rounded text-3xs font-extrabold uppercase border border-red-200">
+                              Time Passed
+                            </div>
+                          )}
+                          {!isExpired && isFull && (
+                            <div className="absolute top-3 right-3 bg-gray-200 text-gray-500 px-2 py-1 rounded text-3xs font-extrabold uppercase border border-gray-300">
+                              Full
                             </div>
                           )}
 

@@ -287,7 +287,7 @@ export default function ProcurementTracker() {
 
   const currentStage = procurement.current_stage || 1;
   const netQuintals = procurement.net_weight_quintals || procurement.estimated_weight_quintals || 0;
-  const finalPayout = procurement.gross_payout || Math.round(netQuintals * (procurement.msp_rate || 2275));
+  const finalPayout = procurement.gross_payout || Math.round(netQuintals * (procurement.msp_rate || 0));
 
   const getAuditLogs = () => {
     const logs = [];
@@ -299,13 +299,13 @@ export default function ProcurementTracker() {
     }
     if (currentStage >= 2) {
       logs.push({
-        stage: 2, title: 'Gate Check-in Completed', notes: `Gate entry verified against security pass #${procurement.gate_pass || 'GP-2026-8831'}.`,
+        stage: 2, title: 'Gate Check-in Completed', notes: `Gate entry verified against security pass #${procurement.gate_pass || 'N/A'}.`,
         timestamp: new Date(procurement.gate_in_at || Date.now()).toLocaleString(), officer: 'Gate Security Guard'
       });
     }
     if (currentStage >= 3) {
       logs.push({
-        stage: 3, title: 'Quality Assaying Passed', notes: `Moisture: ${procurement.moisture_percent || 11.6}%, Grade: ${procurement.grade || 'Grade A FAQ'}`,
+        stage: 3, title: 'Quality Assaying Passed', notes: `Moisture: ${procurement.moisture_percent || 'N/A'}%, Grade: ${procurement.grade || 'N/A'}`,
         timestamp: new Date(procurement.assayed_at || Date.now()).toLocaleString(), officer: 'Lab Inspector'
       });
     }
@@ -642,7 +642,7 @@ export default function ProcurementTracker() {
             Payment Successfully Generated!
           </h2>
           <p className="text-sm text-emerald-700 max-w-lg mx-auto mb-6">
-            Official J-Form <strong>({procurement.j_form_number || 'JF-2026-98124'})</strong> has been approved. The MSP payout has been initiated via Direct Benefit Transfer to the registered bank account.
+            Official J-Form <strong>({procurement.j_form_number || 'N/A'})</strong> has been approved. The MSP payout has been initiated via Direct Benefit Transfer to the registered bank account.
           </p>
           
           <div className="inline-block bg-white px-8 py-4 rounded-2xl shadow-sm border border-emerald-100">

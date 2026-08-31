@@ -231,14 +231,19 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
     try {
       let stageDetails = {};
       if (nextStage === 2) {
-        stageDetails = { gate_pass: 'GP-2026-8831' };
+        stageDetails = { gate_pass: `GP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}` };
       } else if (nextStage === 3) {
-        stageDetails = { moisture_percent: 11.6, purity_percent: 99.2, grade: 'Grade A FAQ' };
+        const randomMoisture = (10.5 + Math.random() * 1.5).toFixed(1);
+        stageDetails = { moisture_percent: Number(randomMoisture), purity_percent: 99.2, grade: 'Grade A FAQ' };
       } else if (nextStage === 4) {
         const w = currentProc?.estimated_weight_quintals || 45.20;
         stageDetails = { net_weight_quintals: w, gunny_bags: Math.round(w * 2) };
       } else if (nextStage === 5) {
-        stageDetails = { msp_rate: 2275, j_form_number: 'JF-2026-98124' };
+        let rate = 2275;
+        if (currentProc?.crop_type?.includes('Paddy')) rate = 2300;
+        else if (currentProc?.crop_type?.includes('Mustard')) rate = 5650;
+        else if (currentProc?.crop_type?.includes('Maize')) rate = 2090;
+        stageDetails = { msp_rate: rate, j_form_number: `JF-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}` };
       }
 
       const res = await fetch(`${API_BASE}/api/capacity/procurements/advance-stage`, {
@@ -286,21 +291,6 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       showError('Network error while rejecting consignment.');
     } finally {
       setIsRejecting(false);
-    }
-  };
-
-  const handleResetSeed = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/capacity/seed`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        showFeedback('⚡ All Demo Mandi Data Reset to Default!');
-        setInputCapacities({});
-        setIsEditingShifts(false);
-        fetchAllData(true);
-      }
-    } catch (err) {
-      console.error('Error resetting seed data:', err);
     }
   };
 
@@ -428,8 +418,8 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
               </div>
               <div>
                 <span className="text-gray-400 font-semibold block text-3xs uppercase">J-Form Reference</span>
-                <span className="font-extrabold text-emerald-800 text-sm font-mono">{selectedVoucher.j_form_number || 'JF-2026-98124'}</span>
-                <span className="text-gray-500 block text-3xs font-mono mt-0.5">Gate Pass: {selectedVoucher.gate_pass || 'GP-2026-8831'}</span>
+                <span className="font-extrabold text-emerald-800 text-sm font-mono">{selectedVoucher.j_form_number || 'N/A'}</span>
+                <span className="text-gray-500 block text-3xs font-mono mt-0.5">Gate Pass: {selectedVoucher.gate_pass || 'N/A'}</span>
               </div>
             </div>
 
@@ -846,7 +836,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                           {currentActiveProcurement.current_stage >= 3 && <span className="text-xs">✓</span>}
                         </div>
                         <h4 className="font-bold text-sm">Quality Assaying</h4>
-                        <p className="text-3xs text-emerald-200/80 mt-1">11.6% Moisture • FAQ Grade</p>
+                        <p className="text-3xs text-emerald-200/80 mt-1">{currentActiveProcurement.moisture_percent || 'N/A'}% Moisture • {currentActiveProcurement.grade || 'N/A'}</p>
 
                         {currentActiveProcurement.current_stage === 2 && (
                           <div className="mt-3 flex gap-1.5">
@@ -974,7 +964,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                       <tr key={p.token_id} className="hover:bg-emerald-50/40 transition-colors">
                         <td className="py-3.5 px-4">
                           <span className="font-mono font-bold text-gray-900 block">{p.token_id}</span>
-                          <span className="text-3xs text-emerald-800 font-mono font-bold">{p.j_form_number || 'JF-2026-98124'}</span>
+                          <span className="text-3xs text-emerald-800 font-mono font-bold">{p.j_form_number || 'N/A'}</span>
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="font-extrabold text-gray-900 block">{p.farmer_name}</span>
@@ -982,13 +972,13 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="text-gray-900 block">{p.crop_type}</span>
-                          <span className="text-3xs text-gray-500 font-bold">{p.net_weight_quintals || 45.2} Qtl ({p.gunny_bags || 90} Bags)</span>
+                          <span className="text-3xs text-gray-500 font-bold">{p.net_weight_quintals || 'N/A'} Qtl ({p.gunny_bags || 'N/A'} Bags)</span>
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="text-base font-black text-emerald-800">
-                            ₹{(p.gross_payout || 102830).toLocaleString('en-IN')}
+                            ₹{(p.gross_payout || 0).toLocaleString('en-IN')}
                           </span>
-                          <span className="text-3xs text-gray-400 block font-mono">MSP @ ₹{p.msp_rate || 2275}/Q</span>
+                          <span className="text-3xs text-gray-400 block font-mono">MSP @ ₹{p.msp_rate || 'N/A'}/Q</span>
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 text-emerald-900 rounded-full font-bold text-3xs uppercase">
@@ -1042,7 +1032,7 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
                       <tr key={p.token_id} className="hover:bg-red-50/30 transition-colors">
                         <td className="py-3.5 px-4">
                           <span className="font-mono font-bold text-red-900 block">{p.token_id}</span>
-                          <span className="text-3xs text-gray-500 font-mono font-semibold">Pass: {p.gate_pass || 'GP-2026'}</span>
+                          <span className="text-3xs text-gray-500 font-mono font-semibold">Pass: {p.gate_pass || 'N/A'}</span>
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="font-extrabold text-gray-900 block">{p.farmer_name}</span>
@@ -1494,12 +1484,6 @@ export default function AdminConsole({ userSession, onLogout, onOpenLogin }) {
       {/* 4. FOOTER UTILITY */}
       <div className="pt-4 border-t border-gray-200 flex items-center justify-between text-xs text-gray-400">
         <p>AnnaSetu • Dedicated Mandi Manager Station</p>
-        <button 
-          onClick={handleResetSeed}
-          className="text-gray-500 hover:text-emerald-700 font-semibold underline cursor-pointer"
-        >
-          ⚡ Reset Demo Test Values
-        </button>
       </div>
 
     </div>

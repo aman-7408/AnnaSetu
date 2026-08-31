@@ -45,7 +45,11 @@ router.post('/send-otp', async (req, res) => {
       }
     }
 
-    res.json({ success: true, message: 'OTP successfully sent to Aadhar-linked mobile number.' });
+    res.json({ 
+      success: true, 
+      message: 'OTP successfully sent to Aadhar-linked mobile number.',
+      otp: '123456'
+    });
   } catch (err) {
     console.error('Send OTP error:', err);
     res.status(500).json({ error: 'Database verification failed.' });
@@ -56,8 +60,12 @@ router.post('/send-otp', async (req, res) => {
 router.post('/verify-otp', async (req, res) => {
   const { aadhar_number, otp } = req.body;
   
+  if (!/^\d{6}$/.test(otp)) {
+    return res.status(400).json({ error: 'Invalid OTP format. Must be 6 digits.' });
+  }
+
   if (otp !== '123456') {
-    return res.status(400).json({ error: 'Invalid OTP.' });
+    return res.status(400).json({ error: 'Incorrect OTP. Please enter valid test OTP 123456.' });
   }
 
   try {
@@ -85,10 +93,14 @@ router.post('/verify-otp', async (req, res) => {
 // 3. STEP 2: COMPLETE REGISTRATION (Saves verified farmer to AnnaSetu)
 router.post('/register', async (req, res) => {
   try {
-    const { aadhar_number, bank_account_number } = req.body;
+    const { aadhar_number, bank_account_number, land_size } = req.body;
     
     if (!aadhar_number || aadhar_number.length !== 12 || !/^\d{12}$/.test(aadhar_number)) {
       return res.status(400).json({ error: 'Invalid Aadhar format. Must be exactly 12 digits.' });
+    }
+
+    if (!land_size || isNaN(parseFloat(land_size)) || parseFloat(land_size) <= 0) {
+      return res.status(400).json({ error: 'Invalid land size. Please enter a valid positive number.' });
     }
 
     // Cross-verify with AadharCitizen database
@@ -136,7 +148,8 @@ router.post('/login/send-otp', async (req, res) => {
       success: true,
       message: 'OTP sent successfully to registered mobile number.',
       farmer_name: farmer.name,
-      masked_phone: farmer.phone ? `••••••${farmer.phone.slice(-4)}` : '••••••'
+      masked_phone: farmer.phone ? `••••••${farmer.phone.slice(-4)}` : '••••••',
+      otp: '123456'
     });
   } catch (err) {
     console.error('Farmer login send OTP error:', err);
@@ -148,8 +161,12 @@ router.post('/login/send-otp', async (req, res) => {
 router.post('/login/verify-otp', async (req, res) => {
   const { aadhar_number, otp } = req.body;
 
+  if (!/^\d{6}$/.test(otp)) {
+    return res.status(400).json({ error: 'Invalid OTP format. Must be 6 digits.' });
+  }
+
   if (otp !== '123456') {
-    return res.status(400).json({ error: 'Invalid OTP. Please check the code and try again.' });
+    return res.status(400).json({ error: 'Incorrect OTP. Please enter valid test OTP 123456.' });
   }
 
   try {

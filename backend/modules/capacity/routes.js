@@ -304,21 +304,25 @@ router.post('/procurements/advance-stage', async (req, res) => {
     proc.updated_at = new Date();
 
     if (target_stage === 2) {
-      proc.gate_pass = details?.gate_pass || 'GP-2026-8831';
+      if (!details?.gate_pass) return res.status(400).json({ error: 'gate_pass is required for Stage 2' });
+      proc.gate_pass = details.gate_pass;
       proc.gate_in_at = new Date();
     } else if (target_stage === 3) {
-      proc.moisture_percent = details?.moisture_percent || 11.6;
-      proc.grade = details?.grade || 'Grade A FAQ';
+      if (!details?.moisture_percent || !details?.grade) return res.status(400).json({ error: 'moisture_percent and grade are required for Stage 3' });
+      proc.moisture_percent = details.moisture_percent;
+      proc.grade = details.grade;
       proc.assayed_at = new Date();
     } else if (target_stage === 4) {
-      proc.net_weight_quintals = details?.net_weight_quintals || 45.20;
-      proc.gunny_bags = details?.gunny_bags || 90;
+      if (!details?.net_weight_quintals || !details?.gunny_bags) return res.status(400).json({ error: 'net_weight_quintals and gunny_bags are required for Stage 4' });
+      proc.net_weight_quintals = details.net_weight_quintals;
+      proc.gunny_bags = details.gunny_bags;
       proc.weighed_at = new Date();
     } else if (target_stage === 5) {
-      proc.msp_rate = details?.msp_rate || 2275;
+      if (!details?.msp_rate || !details?.j_form_number) return res.status(400).json({ error: 'msp_rate and j_form_number are required for Stage 5' });
+      proc.msp_rate = details.msp_rate;
       const weight = proc.net_weight_quintals || 45.20;
       proc.gross_payout = Math.round(weight * proc.msp_rate);
-      proc.j_form_number = details?.j_form_number || 'JF-2026-98124';
+      proc.j_form_number = details.j_form_number;
       proc.approved_at = new Date();
     }
 
@@ -328,7 +332,7 @@ router.post('/procurements/advance-stage', async (req, res) => {
     try {
       // Authoritatively resolve active farmer Aadhaar & profile
       let farmerAadhar = proc.farmer_aadhar;
-      if (!farmerAadhar || farmerAadhar === '111122223333') {
+      if (!farmerAadhar) {
         const associatedBooking = await Booking.findOne({ token_id: proc.token_id });
         if (associatedBooking && associatedBooking.farmer_aadhar) {
           farmerAadhar = associatedBooking.farmer_aadhar;
@@ -336,7 +340,6 @@ router.post('/procurements/advance-stage', async (req, res) => {
           await proc.save();
         }
       }
-      if (!farmerAadhar) farmerAadhar = '111122223333';
 
       if (target_stage === 2) {
         await sendNotification({
@@ -345,7 +348,7 @@ router.post('/procurements/advance-stage', async (req, res) => {
           recipient_phone: proc.farmer_phone || '',
           trigger_event: 'queue_update',
           metadata: {
-            gate_pass: proc.gate_pass || 'GP-2026-8831'
+            gate_pass: proc.gate_pass || 'N/A'
           }
         });
       } else if (target_stage === 3) {
@@ -384,8 +387,8 @@ router.post('/procurements/advance-stage', async (req, res) => {
         // Auto-create/sync DBT Payment record dynamically in Module 6
         try {
           const farmerRec = await Farmer.findOne({ aadhar_number: farmerAadhar });
-          const bankAcc = farmerRec?.bank_account_number || (farmerAadhar === '222233334444' ? '100023456789' : farmerAadhar === '333344445555' ? '200034567890' : '000012345678');
-          const bankIfsc = farmerRec?.bank_ifsc || (farmerAadhar === '222233334444' ? 'SBIN0000017' : farmerAadhar === '333344445555' ? 'PUNB0024500' : 'SBIN0001234');
+          const bankAcc = farmerRec?.bank_account_number || 'UNKNOWN_ACC';
+          const bankIfsc = farmerRec?.bank_ifsc || 'UNKNOWN_IFSC';
           const randomUtr = `UTR-2026-PFMS-${Math.floor(100000 + Math.random() * 900000)}`;
           const randomPmt = `PMT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -405,7 +408,7 @@ router.post('/procurements/advance-stage', async (req, res) => {
               bank_account_number: bankAcc,
               bank_ifsc: bankIfsc,
               bank_name: 'State Bank of India',
-              j_form_number: proc.j_form_number || 'JF-2026-98124',
+              j_form_number: proc.j_form_number || 'N/A',
               payment_status: 'PAID',
               disbursed_at: new Date()
             });
@@ -420,9 +423,10 @@ router.post('/procurements/advance-stage', async (req, res) => {
           recipient_phone: proc.farmer_phone || '',
           trigger_event: 'payment_initiated',
           metadata: {
-            amount: (proc.gross_payout || 102830).toLocaleString('en-IN'),
-            quantity: `${proc.net_weight_quintals || 45.2} Quintals`,
-            j_form_no: proc.j_form_number || 'JF-2026-98124'
+            amount: (proc.gross_payout || 0).toLocaleString('en-IN'),
+            quantity: `${proc.net_weight_quintals || 0} Quintals`,
+            j_form_no: proc.j_form_number,
+            msp_rate: proc.msp_rate
           }
         });
 
@@ -432,9 +436,9 @@ router.post('/procurements/advance-stage', async (req, res) => {
           recipient_phone: proc.farmer_phone || '',
           trigger_event: 'payment_credited',
           metadata: {
-            amount: (proc.gross_payout || 102830).toLocaleString('en-IN'),
-            bank_name: 'Registered Bank Account',
-            account_last4: '••••'
+            amount: (proc.gross_payout || 0).toLocaleString('en-IN'),
+            bank_name: 'Registered Bank',
+            account_last4: farmerRec?.bank_account_number ? farmerRec.bank_account_number.slice(-4) : 'N/A'
           }
         });
       }
@@ -481,7 +485,7 @@ router.post('/procurements/reject', async (req, res) => {
 
     // Resolve farmer Aadhaar dynamically
     let farmerAadhar = proc.farmer_aadhar;
-    if (!farmerAadhar || farmerAadhar === '111122223333') {
+    if (!farmerAadhar) {
       const associatedBooking = await Booking.findOne({ token_id: proc.token_id });
       if (associatedBooking && associatedBooking.farmer_aadhar) {
         farmerAadhar = associatedBooking.farmer_aadhar;
@@ -489,7 +493,6 @@ router.post('/procurements/reject', async (req, res) => {
         await proc.save();
       }
     }
-    if (!farmerAadhar) farmerAadhar = '111122223333';
 
     // Send instant high-priority notification to farmer
     try {

@@ -127,7 +127,8 @@ router.put('/farmer/:farmer_id/read-all', async (req, res) => {
  */
 router.post('/seed-demo', async (req, res) => {
   try {
-    const { farmer_id = '111122223333', name = 'Aman Kumar', phone = '9876543210' } = req.body;
+    const { farmer_id, name, phone } = req.body;
+    if (!farmer_id || !name || !phone) return res.status(400).json({ error: 'farmer_id, name, and phone are required' });
     const seeded = await seedDemoNotifications(farmer_id, name, phone);
     res.status(201).json({
       message: `Seeded ${seeded.length} sample notifications.`,
