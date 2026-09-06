@@ -311,14 +311,358 @@ router.get('/token/:tokenId', async (req, res) => {
   }
 });
 
-// 4. GET ALL BOOKINGS (FOR LOGISTICS AUDIT / OVERVIEW)
-router.get('/all', async (req, res) => {
+// 5. CANCEL TOKEN / GATE PASS (ONLY BEFORE GATE ARRIVAL - STAGE 1)
+router.post('/cancel', async (req, res) => {
   try {
-    const bookings = await Booking.find().sort({ created_at: -1 }).limit(100);
-    res.json({ success: true, count: bookings.length, bookings });
+    const token_id = req.body.token_id || req.body.tokenId;
+    const farmer_aadhar = req.body.farmer_aadhar || req.body.farmerAadhar;
+    const reason = req.body.reason || req.body.customRemark;
+
+    if (!token_id) {
+      return res.status(400).json({ error: 'Token ID is required.' });
+    }
+
+    const booking = await Booking.findOne({ token_id });
+    if (!booking) {
+      return res.status(404).json({ error: `Gate pass token ${token_id} not found.` });
+    }
+
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({ error: 'This token has already been cancelled.' });
+    }
+    if (booking.status === 'completed') {
+      return res.status(400).json({ error: 'Completed consignments cannot be cancelled.' });
+    }
+
+    // Safety Guard: Check Procurement Stage
+    const procurement = await Procurement.findOne({ token_id });
+    if (procurement && procurement.current_stage > 1) {
+      return res.status(400).json({
+        error: `Cannot cancel token: Consignment is already at Stage ${procurement.current_stage} (Gate-In / Processing). Cancellation is only permitted prior to gate arrival.`
+      });
+    }
+
+    const weight = Number(booking.estimated_weight_quintals) || Number(procurement?.estimated_weight_quintals) || 0;
+
+    // 1. Release Slot Capacity
+    const slot = await Slot.findOne({
+      centre_id: booking.centre_id,
+      date: booking.booking_date,
+      slot_code: booking.slot_code
+    });
+    if (slot) {
+      const newBooked = Math.max(0, (slot.booked_capacity_quintals || 0) - weight);
+      const newUtil = (newBooked / slot.max_capacity_quintals) * 100;
+      let slotStatus = 'available';
+      if (newUtil >= 100) slotStatus = 'full';
+      else if (newUtil >= 75) slotStatus = 'filling_fast';
+
+      await Slot.findByIdAndUpdate(slot._id, {
+        booked_capacity_quintals: newBooked,
+        status: slotStatus
+      });
+    }
+
+    // 2. Release Centre Capacity
+    if (booking.centre_id) {
+      const centre = await Centre.findById(booking.centre_id);
+      if (centre) {
+        const newCentreBooked = Math.max(0, (centre.booked_capacity_quintals || 0) - weight);
+        await Centre.findByIdAndUpdate(centre._id, {
+          booked_capacity_quintals: newCentreBooked
+        });
+      }
+    }
+
+    // 3. Update Booking Record
+    const cancellationReason = reason || 'Cancelled by farmer before gate arrival';
+    booking.status = 'cancelled';
+    booking.cancelled_at = new Date();
+    booking.cancellation_reason = cancellationReason;
+    await booking.save();
+
+    // 4. Update Procurement Record
+    if (procurement) {
+      procurement.status = 'cancelled';
+      procurement.cancelled_at = new Date();
+      procurement.cancellation_reason = cancellationReason;
+      procurement.updated_at = new Date();
+      await procurement.save();
+    }
+
+    // 5. Send Real-Time Notification
+    try {
+      await sendNotification({
+        farmer_id: booking.farmer_aadhar,
+        recipient_name: booking.farmer_name,
+        recipient_phone: booking.farmer_phone,
+        trigger_event: 'booking_cancelled',
+        metadata: {
+          token_id: booking.token_id,
+          token_no: booking.token_id,
+          date: booking.booking_date,
+          centre_name: booking.centre_name,
+          reason: cancellationReason
+        }
+      });
+    } catch (notifErr) {
+      console.warn('Silent cancellation notification error:', notifErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `Token #${token_id} has been cancelled and ${weight} Q capacity has been restored.`,
+      booking,
+      procurement
+    });
   } catch (err) {
-    console.error('Error fetching all bookings:', err);
-    res.status(500).json({ error: 'Failed to fetch bookings.' });
+    console.error('Error cancelling token:', err);
+    res.status(500).json({ error: err.message || 'Failed to cancel token.' });
+  }
+});
+
+// 6. RESCHEDULE TOKEN / GATE PASS (ONLY BEFORE GATE ARRIVAL - STAGE 1)
+router.post('/reschedule', async (req, res) => {
+  try {
+    const token_id = req.body.token_id || req.body.tokenId;
+    const farmer_aadhar = req.body.farmer_aadhar || req.body.farmerAadhar;
+    const new_date = req.body.new_date || req.body.newDate;
+    const new_slot_code = req.body.new_slot_code || req.body.newSlotCode;
+    const new_slot_name = req.body.new_slot_name || req.body.newSlotName;
+
+    if (!token_id) {
+      return res.status(400).json({ error: 'Token ID is required.' });
+    }
+    if (!new_date || !new_slot_code) {
+      return res.status(400).json({ error: 'New date and shift selection are required.' });
+    }
+
+    const booking = await Booking.findOne({ token_id });
+    if (!booking) {
+      return res.status(404).json({ error: `Gate pass token ${token_id} not found.` });
+    }
+
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({ error: 'Cancelled tokens cannot be rescheduled. Please book a new slot.' });
+    }
+    if (booking.status === 'completed') {
+      return res.status(400).json({ error: 'Completed consignments cannot be rescheduled.' });
+    }
+
+    // Safety Guard: Check Procurement Stage
+    const procurement = await Procurement.findOne({ token_id });
+    if (procurement && procurement.current_stage > 1) {
+      return res.status(400).json({
+        error: `Cannot reschedule token: Consignment is already at Stage ${procurement.current_stage} (Gate-In / Processing). Rescheduling is only permitted prior to gate arrival.`
+      });
+    }
+
+    // Check Rolling 7-day booking window
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    const maxDate = new Date(todayDate);
+    maxDate.setDate(maxDate.getDate() + 7);
+    const reqDate = new Date(new_date);
+    reqDate.setHours(0, 0, 0, 0);
+
+    if (reqDate < todayDate || reqDate > maxDate) {
+      return res.status(400).json({
+        error: 'Safety Guard: Rescheduling is restricted to a rolling 7-day window from today.'
+      });
+    }
+
+    // Prevent identical reschedule
+    if (booking.booking_date === new_date && booking.slot_code === new_slot_code) {
+      return res.status(400).json({ error: 'Please choose a different date or shift to reschedule.' });
+    }
+
+    const weight = Number(booking.estimated_weight_quintals) || 0;
+
+    // 1. Find or Auto-Initialize Target Slot
+    let targetSlot = await Slot.findOne({
+      centre_id: booking.centre_id,
+      date: new_date,
+      slot_code: new_slot_code
+    });
+
+    if (!targetSlot) {
+      const centre = await Centre.findById(booking.centre_id);
+      const slotCap = Math.round((centre?.daily_capacity_quintals || 1200) / 3);
+      const defaultSlots = [
+        {
+          centre_id: booking.centre_id,
+          centre_name: booking.centre_name,
+          date: new_date,
+          slot_code: 'SLOT_1_MORNING',
+          slot_name: 'Slot 1: Morning (09:00 AM - 12:00 PM)',
+          max_capacity_quintals: slotCap,
+          booked_capacity_quintals: 0,
+          status: 'available'
+        },
+        {
+          centre_id: booking.centre_id,
+          centre_name: booking.centre_name,
+          date: new_date,
+          slot_code: 'SLOT_2_AFTERNOON',
+          slot_name: 'Slot 2: Afternoon (12:00 PM - 03:00 PM)',
+          max_capacity_quintals: slotCap,
+          booked_capacity_quintals: 0,
+          status: 'available'
+        },
+        {
+          centre_id: booking.centre_id,
+          centre_name: booking.centre_name,
+          date: new_date,
+          slot_code: 'SLOT_3_EVENING',
+          slot_name: 'Slot 3: Evening (03:00 PM - 06:00 PM)',
+          max_capacity_quintals: slotCap,
+          booked_capacity_quintals: 0,
+          status: 'available'
+        }
+      ];
+
+      await Slot.insertMany(defaultSlots);
+      targetSlot = await Slot.findOne({
+        centre_id: booking.centre_id,
+        date: new_date,
+        slot_code: new_slot_code
+      });
+    }
+
+    // 2. Capacity Guard Check on Target Slot
+    const remainingTargetCap = Math.max(0, targetSlot.max_capacity_quintals - (targetSlot.booked_capacity_quintals || 0));
+    if (weight > remainingTargetCap) {
+      return res.status(400).json({
+        error: `Insufficient Capacity: Target shift has only ${remainingTargetCap} Q available, but your booking requires ${weight} Q.`
+      });
+    }
+
+    // 3. Release Capacity from Old Slot
+    const oldSlot = await Slot.findOne({
+      centre_id: booking.centre_id,
+      date: booking.booking_date,
+      slot_code: booking.slot_code
+    });
+    if (oldSlot) {
+      const newOldBooked = Math.max(0, (oldSlot.booked_capacity_quintals || 0) - weight);
+      const oldUtil = (newOldBooked / oldSlot.max_capacity_quintals) * 100;
+      let oldStatus = 'available';
+      if (oldUtil >= 100) oldStatus = 'full';
+      else if (oldUtil >= 75) oldStatus = 'filling_fast';
+
+      await Slot.findByIdAndUpdate(oldSlot._id, {
+        booked_capacity_quintals: newOldBooked,
+        status: oldStatus
+      });
+    }
+
+    // 4. Atomically Allocate Capacity into Target Slot (Race Condition Protection)
+    const updatedTargetSlot = await Slot.findOneAndUpdate(
+      {
+        _id: targetSlot._id,
+        booked_capacity_quintals: { $lte: targetSlot.max_capacity_quintals - weight }
+      },
+      {
+        $inc: { booked_capacity_quintals: weight }
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!updatedTargetSlot) {
+      // Rollback: Re-credit old slot if target was filled concurrently
+      if (oldSlot) {
+        await Slot.findByIdAndUpdate(oldSlot._id, { $inc: { booked_capacity_quintals: weight } });
+      }
+      return res.status(409).json({
+        error: 'Target shift capacity was just filled by another concurrent booking. Please select another shift or date.'
+      });
+    }
+
+    const newTargetUtil = (updatedTargetSlot.booked_capacity_quintals / updatedTargetSlot.max_capacity_quintals) * 100;
+    let targetStatus = 'available';
+    if (newTargetUtil >= 100) targetStatus = 'full';
+    else if (newTargetUtil >= 75) targetStatus = 'filling_fast';
+
+    await Slot.findByIdAndUpdate(updatedTargetSlot._id, {
+      status: targetStatus
+    });
+
+    const resolvedSlotName = new_slot_name || targetSlot.slot_name;
+
+    // 5. Generate Updated Security QR Code
+    const qrPayload = {
+      app: 'AnnaSetu National Grain Procurement',
+      token_id: booking.token_id,
+      farmer_aadhar: booking.farmer_aadhar,
+      farmer_name: booking.farmer_name,
+      farmer_phone: booking.farmer_phone,
+      centre: booking.centre_name,
+      shift: resolvedSlotName,
+      date: new_date,
+      crop: booking.crop_type,
+      weight_quintals: weight,
+      rescheduled_at: new Date().toISOString()
+    };
+
+    const qrDataUrl = await QRCode.toDataURL(JSON.stringify(qrPayload), {
+      errorCorrectionLevel: 'H',
+      margin: 2,
+      width: 320,
+      color: {
+        dark: '#064e3b',
+        light: '#ffffff'
+      }
+    });
+
+    // 6. Update Booking Record
+    booking.booking_date = new_date;
+    booking.slot_code = new_slot_code;
+    booking.slot_name = resolvedSlotName;
+    booking.qr_code_data = qrDataUrl;
+    booking.rescheduled_at = new Date();
+    booking.reschedule_count = (booking.reschedule_count || 0) + 1;
+    await booking.save();
+
+    // 7. Update Procurement Record
+    if (procurement) {
+      procurement.slot_date = new_date;
+      procurement.slot_name = resolvedSlotName;
+      procurement.rescheduled_at = new Date();
+      procurement.reschedule_count = (procurement.reschedule_count || 0) + 1;
+      procurement.updated_at = new Date();
+      await procurement.save();
+    }
+
+    // 8. Send Real-Time Notification
+    try {
+      await sendNotification({
+        farmer_id: booking.farmer_aadhar,
+        recipient_name: booking.farmer_name,
+        recipient_phone: booking.farmer_phone,
+        trigger_event: 'booking_rescheduled',
+        metadata: {
+          token_id: booking.token_id,
+          token_no: booking.token_id,
+          new_date: new_date,
+          date: new_date,
+          new_shift: resolvedSlotName,
+          shift: resolvedSlotName,
+          centre_name: booking.centre_name
+        }
+      });
+    } catch (notifErr) {
+      console.warn('Silent reschedule notification error:', notifErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `Token #${token_id} rescheduled to ${new_date} (${resolvedSlotName}) successfully!`,
+      booking,
+      procurement
+    });
+  } catch (err) {
+    console.error('Error rescheduling token:', err);
+    res.status(500).json({ error: err.message || 'Failed to reschedule token.' });
   }
 });
 

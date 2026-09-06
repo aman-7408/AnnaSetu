@@ -300,30 +300,72 @@ router.post('/procurements/advance-stage', async (req, res) => {
       return res.status(404).json({ error: 'Token not found in procurement registry' });
     }
 
-    proc.current_stage = target_stage;
+    // Boundary Guards: Cannot advance cancelled or rejected tokens
+    if (proc.status === 'cancelled') {
+      return res.status(400).json({ error: `Cannot advance cancelled token #${token_id}. Booking was cancelled prior to gate arrival.` });
+    }
+    if (proc.status === 'rejected') {
+      return res.status(400).json({ error: `Cannot advance rejected consignment #${token_id}. Consignment was rejected at Stage ${proc.rejection_stage || 3}.` });
+    }
+    if (proc.status === 'completed' || proc.current_stage >= 5) {
+      return res.status(400).json({ error: `Consignment #${token_id} has already been completed and disbursed.` });
+    }
+
+    const targetStageNum = Number(target_stage);
+    if (targetStageNum !== proc.current_stage + 1) {
+      return res.status(400).json({ 
+        error: `Invalid stage progression: Consignment #${token_id} is currently at Stage ${proc.current_stage}. Next required stage is Stage ${proc.current_stage + 1}.` 
+      });
+    }
+
+    proc.current_stage = targetStageNum;
     proc.updated_at = new Date();
 
-    if (target_stage === 2) {
+    if (targetStageNum === 2) {
       if (!details?.gate_pass) return res.status(400).json({ error: 'gate_pass is required for Stage 2' });
       proc.gate_pass = details.gate_pass;
       proc.gate_in_at = new Date();
-    } else if (target_stage === 3) {
-      if (!details?.moisture_percent || !details?.grade) return res.status(400).json({ error: 'moisture_percent and grade are required for Stage 3' });
-      proc.moisture_percent = details.moisture_percent;
-      proc.grade = details.grade;
+    } else if (targetStageNum === 3) {
+      if (!details?.moisture_percent) return res.status(400).json({ error: 'moisture_percent is required for Stage 3' });
+      proc.moisture_percent = Number(details.moisture_percent);
+      proc.purity_percent = Number(details.purity_percent || 99.2);
+      if (details.grade) proc.grade = details.grade;
       proc.assayed_at = new Date();
-    } else if (target_stage === 4) {
-      if (!details?.net_weight_quintals || !details?.gunny_bags) return res.status(400).json({ error: 'net_weight_quintals and gunny_bags are required for Stage 4' });
-      proc.net_weight_quintals = details.net_weight_quintals;
-      proc.gunny_bags = details.gunny_bags;
+    } else if (targetStageNum === 4) {
+      if (!details?.net_weight_quintals) return res.status(400).json({ error: 'net_weight_quintals is required for Stage 4' });
+      proc.net_weight_quintals = Number(details.net_weight_quintals);
+      proc.gunny_bags = Number(details.gunny_bags || Math.round(proc.net_weight_quintals * 2));
       proc.weighed_at = new Date();
-    } else if (target_stage === 5) {
+
+      // Recalculate MSP gross payout dynamically from measured weight
+      let rate = proc.msp_rate;
+      if (!rate) {
+        if (proc.crop_type?.includes('Paddy')) rate = 2300;
+        else if (proc.crop_type?.includes('Mustard')) rate = 5650;
+        else if (proc.crop_type?.includes('Maize')) rate = 2090;
+        else rate = 2275;
+      }
+      proc.msp_rate = rate;
+      proc.gross_payout = Math.round(proc.net_weight_quintals * rate);
+
+      // Keep Booking weight in sync with measured weighbridge weight
+      try {
+        await Booking.findOneAndUpdate(
+          { token_id: proc.token_id },
+          { weight_quintals: proc.net_weight_quintals }
+        );
+      } catch (bkErr) {
+        console.warn('Booking weight sync error:', bkErr.message);
+      }
+    } else if (targetStageNum === 5) {
       if (!details?.msp_rate || !details?.j_form_number) return res.status(400).json({ error: 'msp_rate and j_form_number are required for Stage 5' });
       proc.msp_rate = details.msp_rate;
-      const weight = proc.net_weight_quintals || 45.20;
+      const weight = proc.net_weight_quintals || proc.estimated_weight_quintals || 45.20;
+      proc.net_weight_quintals = weight;
       proc.gross_payout = Math.round(weight * proc.msp_rate);
       proc.j_form_number = details.j_form_number;
       proc.approved_at = new Date();
+      proc.status = 'completed';
     }
 
     await proc.save();
@@ -358,11 +400,12 @@ router.post('/procurements/advance-stage', async (req, res) => {
           recipient_phone: proc.farmer_phone || '',
           trigger_event: 'quality_passed',
           metadata: {
-            grade: proc.grade || 'Grade A FAQ',
-            moisture: `${proc.moisture_percent || 11.6}%`
+            moisture: `${proc.moisture_percent || 11.5}%`,
+            purity: `${proc.purity_percent || 99.2}%`
           }
         });
       } else if (target_stage === 4) {
+        const estPayout = proc.gross_payout || Math.round((proc.net_weight_quintals || 45.20) * (proc.msp_rate || 2275));
         await sendNotification({
           farmer_id: farmerAadhar,
           recipient_name: proc.farmer_name || 'Farmer',
@@ -370,7 +413,7 @@ router.post('/procurements/advance-stage', async (req, res) => {
           trigger_event: 'weighed',
           metadata: {
             net_weight: `${proc.net_weight_quintals || 45.20} Quintals`,
-            gunny_bags: `${proc.gunny_bags || 90} Bags`
+            estimated_payout: estPayout.toLocaleString('en-IN')
           }
         });
       } else if (target_stage === 5) {

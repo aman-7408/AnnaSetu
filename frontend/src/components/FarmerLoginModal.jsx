@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [aadhar, setAadhar] = useState('');
   const [otp, setOtp] = useState('');
@@ -28,7 +30,7 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
 
     const cleanAadhar = aadhar.replace(/\s+/g, '');
     if (cleanAadhar.length !== 12 || !/^\d{12}$/.test(cleanAadhar)) {
-      setError('Please enter a valid 12-digit Aadhaar number.');
+      setError(t('farmer_err_12_digit'));
       return;
     }
 
@@ -46,9 +48,9 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
         setFarmerInfo({ name: data.farmer_name, masked_phone: data.masked_phone });
       } else if (res.status === 404) {
         setIsUnregistered(true);
-        setError(data.error || 'This Aadhaar is not registered in AnnaSetu.');
+        setError(data.error || t('farmer_err_not_reg'));
       } else {
-        setError(data.error || 'Failed to send OTP. Please try again.');
+        setError(data.error || t('farmer_err_otp_fail'));
       }
     } catch (err) {
       setError('Unable to reach authentication server. Please retry.');
@@ -63,7 +65,7 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
 
     const cleanAadhar = aadhar.replace(/\s+/g, '');
     if (!otp || otp.length !== 6) {
-      setError('Please enter the 6-digit OTP code.');
+      setError(t('farmer_err_6_digit'));
       return;
     }
 
@@ -98,10 +100,10 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
         onLoginSuccess(sessionData);
         handleClose();
       } else {
-        setError(data.error || 'Invalid OTP. Please check and retry.');
+        setError(data.error || t('farmer_err_otp_invalid'));
       }
     } catch (err) {
-      setError('Failed to verify OTP code.');
+      setError(t('farmer_err_otp_fail'));
     } finally {
       setIsLoading(false);
     }
@@ -140,11 +142,11 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100/80 text-emerald-800 rounded-full text-xs font-extrabold uppercase tracking-wider mb-2">
               <span>🌾</span>
-              <span>Farmer Portal</span>
+              <span>{t('farmer_modal_badge')}</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">Farmer Login</h2>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">{t('farmer_modal_title')}</h2>
             <p className="text-xs sm:text-sm text-gray-500 mt-0.5 font-medium">
-              Enter your registered Aadhaar to manage your bookings and payments
+              {t('farmer_modal_desc')}
             </p>
           </div>
           <button 
@@ -171,7 +173,7 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
                   onClick={handleGoToRegister}
                   className="text-xs font-extrabold text-emerald-800 hover:text-emerald-950 underline block cursor-pointer pl-6"
                 >
-                  ➔ Click here to Register as a New Farmer
+                  ➔ {t('farmer_reg_link')}
                 </button>
               )}
             </div>
@@ -182,7 +184,7 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
             <form onSubmit={handleSendOtp} className="space-y-5">
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-                  12-Digit Aadhaar Number
+                  {t('farmer_aadhar_label')}
                 </label>
                 <div className="relative">
                   <input
@@ -190,7 +192,7 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={12}
-                    placeholder="Enter 12-digit Aadhaar number"
+                    placeholder={t('farmer_aadhar_ph')}
                     value={aadhar}
                     onChange={(e) => setAadhar(e.target.value.replace(/\D/g, ''))}
                     className="w-full px-4 py-3.5 bg-gray-50/80 border-2 border-gray-200 rounded-2xl font-mono text-base font-bold text-gray-900 focus:bg-white focus:border-brand focus:ring-4 focus:ring-emerald-50 focus:outline-none transition-all placeholder:font-sans placeholder:font-normal placeholder:text-gray-400"
@@ -203,7 +205,7 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
 
               {/* Test Data Minimal Helper Box */}
               <div className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200 text-xs space-y-1.5">
-                <span className="font-semibold text-gray-500 block text-3xs uppercase tracking-wider">Test Farmer Aadhaar (OTP: 123456):</span>
+                <span className="font-semibold text-gray-500 block text-3xs uppercase tracking-wider">{t('farmer_test_note')}</span>
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
@@ -237,11 +239,11 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
                 {isLoading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Verifying with AnnaSetu...</span>
+                    <span>{t('farmer_verifying')}</span>
                   </>
                 ) : (
                   <>
-                    <span>Send Verification OTP</span>
+                    <span>{t('farmer_send_otp')}</span>
                     <span>➔</span>
                   </>
                 )}
@@ -249,13 +251,13 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
 
               <div className="text-center pt-2">
                 <p className="text-xs text-gray-500 font-medium">
-                  Don't have an account?{' '}
+                  {t('farmer_no_account')}{' '}
                   <button
                     type="button"
                     onClick={handleGoToRegister}
                     className="text-brand font-bold hover:underline cursor-pointer"
                   >
-                    Register as a New Farmer
+                    {t('farmer_reg_link')}
                   </button>
                 </p>
               </div>
@@ -265,7 +267,7 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
             <form onSubmit={handleVerifyOtp} className="space-y-5 animate-fade-in">
               <div className="bg-emerald-50/80 p-4 rounded-2xl border border-emerald-200 flex items-center justify-between">
                 <div>
-                  <span className="text-3xs font-extrabold uppercase tracking-wider text-emerald-800 block">Verified Account</span>
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-emerald-800 block">{t('farmer_verified_account')}</span>
                   <span className="font-extrabold text-emerald-950 text-sm block">{farmerInfo?.name}</span>
                   <span className="text-xs text-emerald-700 font-mono">Mobile: {farmerInfo?.masked_phone}</span>
                 </div>
@@ -274,17 +276,17 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
                   onClick={() => { setOtpSent(false); setOtp(''); }}
                   className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-emerald-200"
                 >
-                  Change
+                  {t('farmer_change')}
                 </button>
               </div>
 
               <div>
                 <div className="flex justify-between items-baseline mb-2">
                   <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Enter 6-Digit OTP
+                    {t('farmer_otp_label')}
                   </label>
                   <span className="text-xs text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-mono">
-                    Test OTP: <strong>123456</strong>
+                    {t('farmer_test_otp')}
                   </span>
                 </div>
                 <input
@@ -306,7 +308,7 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
                   onClick={() => setOtp('123456')}
                   className="w-1/3 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold py-3.5 rounded-2xl transition-colors cursor-pointer"
                 >
-                  Auto-Fill
+                  {t('farmer_autofill')}
                 </button>
                 <button
                   type="submit"
@@ -316,11 +318,11 @@ export default function FarmerLoginModal({ isOpen, onClose, onLoginSuccess }) {
                   {isLoading ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Verifying...</span>
+                      <span>{t('farmer_verifying_otp')}</span>
                     </>
                   ) : (
                     <>
-                      <span>✓ Confirm Login</span>
+                      <span>✓ {t('farmer_confirm_login')}</span>
                     </>
                   )}
                 </button>

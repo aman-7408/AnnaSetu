@@ -19,7 +19,7 @@ mongoose.connect(process.env.MONGODB_URI).then(async () => {
       name: 'Anusrita Deb',
       phone: '9123456789',
       gender: 'Female',
-      address: 'Silchar, Assam - 788001',
+      address: 'Agartala, West Tripura, Tripura - 799001',
       linked_bank_accounts: ['100023456789']
     },
     {

@@ -26,6 +26,20 @@ const TEMPLATES = {
     category: 'booking'
   }),
 
+  booking_cancelled: (data) => ({
+    title: 'Mandi Slot & Token Cancelled',
+    message: `Your slot for Token #${data.token_id || data.token_no || ''} scheduled on ${data.date || 'your booking date'} has been cancelled. Reason: ${data.reason || 'Requested by farmer'}.`,
+    action_hint: 'The reserved slot capacity has been released. You can book a new slot anytime.',
+    category: 'booking'
+  }),
+
+  booking_rescheduled: (data) => ({
+    title: 'Mandi Slot Rescheduled!',
+    message: `Your slot for Token #${data.token_id || data.token_no || ''} has been moved to ${data.new_date || data.date} (${data.new_shift || data.shift || 'Updated Shift'}) at ${data.centre_name || 'Mandi Centre'}.`,
+    action_hint: 'Your security QR pass has been updated. Please arrive on your newly scheduled shift.',
+    category: 'booking'
+  }),
+
   slot_reminder: (data) => ({
     title: 'Reminder: Mandi Shift Tomorrow',
     message: `Your grain selling shift (09:00 AM – 12:00 PM) is scheduled at ${data.centre_name || 'Meerut Central Agro Warehouse'}.`,
@@ -49,14 +63,14 @@ const TEMPLATES = {
 
   quality_passed: (data) => ({
     title: 'Quality Lab Test Passed!',
-    message: `Grain lot verified: ${data.grade || 'Unknown Grade'} with ${data.moisture || 'Unknown'} moisture content.`,
+    message: `Grain lot verified: ${data.moisture || '11.5%'} moisture content and ${data.purity || '99.2%'} purity level.`,
     action_hint: 'Proceed to Weighbridge station for gross weight calculation.',
     category: 'queue'
   }),
 
   weighed: (data) => ({
     title: 'Weighbridge Weight Confirmed',
-    message: `Net Grain Weight: ${data.net_weight || 'N/A'} (${data.gunny_bags || 'N/A'} packaged).`,
+    message: `Net Grain Weight recorded: ${data.net_weight || 'N/A'}. Calculated MSP Payout: ₹${data.estimated_payout || '0'}.`,
     action_hint: 'Proceed to Mandi Manager desk for J-Form approval and DBT payout release.',
     category: 'queue'
   }),

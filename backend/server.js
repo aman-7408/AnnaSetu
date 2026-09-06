@@ -25,6 +25,7 @@ const bookingRoutes = require('./modules/booking/routes');
 app.use('/api/farmers', farmerRoutes);
 app.use('/api/capacity', capacityRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/booking', bookingRoutes);
 app.use('/api/payments', require('./modules/payment/routes'));
 app.use('/api/notifications', require('./modules/notifications/routes'));
 
@@ -48,6 +49,21 @@ if (process.env.MONGODB_URI) {
 } else {
   console.warn('WARNING: No MONGODB_URI found in .env file!');
 }
+
+// 404 Catch-All Route
+app.use((req, res) => {
+  res.status(404).json({ success: false, error: `Route ${req.method} ${req.originalUrl} not found.` });
+});
+
+// Global JSON Error Handler Middleware
+app.use((err, req, res, next) => {
+  console.error('[Unhandled Server Error]:', err.message || err);
+  const statusCode = err.status || err.statusCode || 500;
+  res.status(statusCode).json({
+    success: false,
+    error: err.message || 'An unexpected internal server error occurred.'
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

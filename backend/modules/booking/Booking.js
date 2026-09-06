@@ -53,8 +53,22 @@ const bookingSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['confirmed', 'cancelled', 'completed'], 
+    enum: ['confirmed', 'cancelled', 'completed', 'rejected'], 
     default: 'confirmed' 
+  },
+  cancellation_reason: {
+    type: String,
+    default: ''
+  },
+  cancelled_at: {
+    type: Date
+  },
+  rescheduled_at: {
+    type: Date
+  },
+  reschedule_count: {
+    type: Number,
+    default: 0
   },
   qr_code_data: { 
     type: String, 

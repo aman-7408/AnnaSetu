@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from "react-i18next";
 
 import { useNavigate } from 'react-router-dom';
@@ -8,13 +8,19 @@ import confetti from 'canvas-confetti';
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 const CROPS = [
-  { name: 'Wheat (Sharbati A-Grade)', code: 'WHT', msp: 2275, unit: '₹/Quintal' },
-  { name: 'Paddy (Basmati Common)', code: 'PAD', msp: 2300, unit: '₹/Quintal' },
-  { name: 'Mustard Seed (FAQ Grade)', code: 'MUS', msp: 5650, unit: '₹/Quintal' },
-  { name: 'Maize (Kharif Industrial)', code: 'MAZ', msp: 2090, unit: '₹/Quintal' },
-  { name: 'Barley (Malt Grade)', code: 'BAR', msp: 1850, unit: '₹/Quintal' },
-  { name: 'Gram / Chana (Desi FAQ)', code: 'CHN', msp: 5440, unit: '₹/Quintal' }
+  { name: 'Wheat (Sharbati A-Grade)', key: 'crop_wheat', code: 'WHT', msp: 2275, unit: '₹/Quintal' },
+  { name: 'Paddy (Basmati Common)', key: 'crop_paddy', code: 'PAD', msp: 2300, unit: '₹/Quintal' },
+  { name: 'Mustard Seed (FAQ Grade)', key: 'crop_mustard', code: 'MUS', msp: 5650, unit: '₹/Quintal' },
+  { name: 'Maize (Kharif Industrial)', key: 'crop_maize', code: 'MAZ', msp: 2090, unit: '₹/Quintal' },
+  { name: 'Barley (Malt Grade)', key: 'crop_barley', code: 'BAR', msp: 1850, unit: '₹/Quintal' },
+  { name: 'Gram / Chana (Desi FAQ)', key: 'crop_chana', code: 'CHN', msp: 5440, unit: '₹/Quintal' }
 ];
+
+const getCropDisplayName = (cropName, t) => {
+  if (!cropName) return '';
+  const found = CROPS.find(c => c.name === cropName || c.code === cropName);
+  return found && found.key && t ? t(found.key) : cropName;
+};
 
 const FALLBACK_CENTRES = [
   {
@@ -103,14 +109,21 @@ const getStoredPasses = () => {
 };
 
 export default function SlotBooking() {
+  const { t, i18n } = useTranslation();
+  const isHindi = i18n.language === 'hi';
   const navigate = useNavigate();
   // Timezone-safe local dates to enforce a rolling 7-day booking window
-  const tzOffset = new Date().getTimezoneOffset() * 60000;
-  const nowMs = Date.now() - tzOffset;
-  const todayLocal = new Date(nowMs).toISOString().split('T')[0];
-  const tomorrowLocal = new Date(nowMs + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const dayAfterLocal = new Date(nowMs + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const maxDateLocal = new Date(nowMs + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const [{ nowMs, todayLocal, tomorrowLocal, dayAfterLocal, maxDateLocal }] = useState(() => {
+    const tzOffset = new Date().getTimezoneOffset() * 60000;
+    const baseNow = Date.now() - tzOffset;
+    return {
+      nowMs: baseNow,
+      todayLocal: new Date(baseNow).toISOString().split('T')[0],
+      tomorrowLocal: new Date(baseNow + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      dayAfterLocal: new Date(baseNow + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      maxDateLocal: new Date(baseNow + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    };
+  });
 
   const formatDateDisplay = (isoStr) => {
     if (!isoStr) return 'DD/MM/YYYY';
@@ -121,6 +134,21 @@ export default function SlotBooking() {
       return isoStr;
     }
   };
+
+  // 7-Day Rolling Rescheduling Window Options
+  const rescheduleDateOptions = useMemo(() => {
+    const dateLocale = isHindi ? 'hi-IN' : 'en-US';
+    return Array.from({ length: 8 }, (_, i) => {
+      const d = new Date(nowMs + i * 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split('T')[0];
+      const label = i === 0 
+        ? `${t('admin_today_btn', 'Today')} (${formatDateDisplay(dateStr)})` 
+        : i === 1 
+          ? `${t('admin_tomorrow_btn', 'Tomorrow')} (${formatDateDisplay(dateStr)})` 
+          : d.toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric' }) + ` (${formatDateDisplay(dateStr)})`;
+      return { dateStr, label };
+    });
+  }, [nowMs, isHindi, t]);
 
   const [activeTab, setActiveTab] = useState('book'); // 'book' | 'passes'
   const [currentStep, setCurrentStep] = useState(1); // 1: Farmer & Mandi, 2: Shift, 3: Crop & Weight
@@ -162,8 +190,6 @@ export default function SlotBooking() {
     } catch {}
     return { name: 'Unregistered', aadhar: '', phone: '---', land_size: '---', plot_number: '---', address: '---' };
   });
-  const [aadharInput, setAadharInput] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
   const [selectedCentre, setSelectedCentre] = useState(FALLBACK_CENTRES[0]);
   const [selectedDate, setSelectedDate] = useState(tomorrowLocal);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -174,110 +200,41 @@ export default function SlotBooking() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Developer Testing Helper State
-  const [testAadhaar, setTestAadhaar] = useState(null);
-  const [loadingTestAadhaar, setLoadingTestAadhaar] = useState(true);
-
   // Farmer's Passes from LocalStorage + Server
   const [allPasses, setAllPasses] = useState(() => getStoredPasses());
   const [farmerPayments, setFarmerPayments] = useState([]);
   const [loadingPasses, setLoadingPasses] = useState(false);
   const [activePassModal, setActivePassModal] = useState(null);
 
-  // Fetch Centres & Active Farmer on Mount
-  useEffect(() => {
-    fetchCentres();
-    
-    // Auto-populate from logged-in farmer session & database
-    const initFarmer = async () => {
-      try {
-        let savedAadhaar = '';
-        const sessionRaw = localStorage.getItem('farmer_session');
-        if (sessionRaw) {
-          try {
-            const parsed = JSON.parse(sessionRaw);
-            savedAadhaar = parsed.aadhar || '';
-            if (savedAadhaar) {
-              setSelectedFarmer({
-                name: parsed.name || 'Registered Kisan',
-                aadhar: parsed.aadhar,
-                phone: parsed.phone || '---',
-                land_size: parsed.land_size || '---',
-                plot_number: parsed.plot_number || '---',
-                address: parsed.address || '---'
-              });
-              syncFarmerPassesFromServer(savedAadhaar);
-            }
-          } catch {}
-        }
+  // In-Place Reschedule & Cancel Modal States
+  const [reschedulePass, setReschedulePass] = useState(null);
+  const [cancelPass, setCancelPass] = useState(null);
+  const [actionSuccessBanner, setActionSuccessBanner] = useState('');
+  
+  // Reschedule State
+  const [rescheduleDate, setRescheduleDate] = useState(todayLocal);
+  const [rescheduleSlotCode, setRescheduleSlotCode] = useState('SLOT_1_MORNING');
+  const [rescheduleSlotName, setRescheduleSlotName] = useState('Slot 1: Morning (09:00 AM - 12:00 PM)');
+  const [rescheduleSlotsList, setRescheduleSlotsList] = useState([]);
+  const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState(false);
+  const [isRescheduling, setIsRescheduling] = useState(false);
+  const [rescheduleFeedback, setRescheduleFeedback] = useState(null);
 
-        if (!savedAadhaar) {
-          savedAadhaar = localStorage.getItem('farmer_aadhar') || '';
-        }
+  // Cancel State
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelCustomRemark, setCancelCustomRemark] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelFeedback, setCancelFeedback] = useState(null);
 
-        // Fetch freshest farmer record from database
-        let res;
-        try { res = await fetch(`${API_BASE}/api/farmers`); }
-        catch { res = await fetch('/api/farmers'); }
-        if (res && res.ok) {
-          const data = await res.json();
-          if (data.farmers && data.farmers.length > 0) {
-            const match = data.farmers.find(f => f.aadhar_number === savedAadhaar) || data.farmers[0];
-            if (match) {
-              setSelectedFarmer({
-                name: match.name,
-                aadhar: match.aadhar_number,
-                phone: match.phone,
-                land_size: match.land_size || '5.0 Acres',
-                plot_number: match.plot_number || 'B-452',
-                address: match.address
-              });
-              syncFarmerPassesFromServer(match.aadhar_number);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Error initializing farmer profile:', err);
-      } finally {
-        setLoadingTestAadhaar(false);
-      }
-    };
-    initFarmer();
-  }, []);
+  const presetReasons = [
+    t("tracker_cancel_reason_1", "Weather / Heavy Rain Forecast"),
+    t("tracker_cancel_reason_2", "Tractor / Trolley Breakdown"),
+    t("tracker_cancel_reason_3", "Crop Harvest Delay / Not Ready"),
+    t("tracker_cancel_reason_4", "Personal / Logistics Emergency")
+  ];
 
-  // Fetch Slots when Centre or Date changes
-  useEffect(() => {
-    if (selectedCentre && selectedDate) {
-      fetchSlots(selectedCentre._id, selectedDate);
-    }
-  }, [selectedCentre, selectedDate]);
-
-  const fetchCentres = async () => {
-    try {
-      setLoadingCentres(true);
-      let res;
-      try {
-        res = await fetch(`${API_BASE}/api/capacity/centres`);
-      } catch {
-        res = await fetch('/api/capacity/centres');
-      }
-      if (res && res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.centres) && data.centres.length > 0) {
-          setCentres(data.centres);
-          const match = data.centres.find(c => c._id === selectedCentre?._id) || data.centres[0];
-          setSelectedCentre(match);
-          fetchSlots(match._id, selectedDate);
-        }
-      }
-    } catch {
-      // Fallback data is active
-    } finally {
-      setLoadingCentres(false);
-    }
-  };
-
-  const fetchSlots = async (centreId, date) => {
+  const fetchSlots = useCallback(async (centreId, date) => {
+    if (!centreId || !date) return;
     try {
       setLoadingSlots(true);
       let res;
@@ -295,67 +252,44 @@ export default function SlotBooking() {
           return;
         }
       }
-      const defaults = getDefaultSlotsForCentre(selectedCentre, date);
+      const defaults = getDefaultSlotsForCentre({ _id: centreId }, date);
       setSlots(defaults);
       setSelectedSlot(defaults[0]);
     } catch {
-      const defaults = getDefaultSlotsForCentre(selectedCentre, date);
+      const defaults = getDefaultSlotsForCentre({ _id: centreId }, date);
       setSlots(defaults);
       setSelectedSlot(defaults[0]);
     } finally {
       setLoadingSlots(false);
     }
-  };
+  }, []);
 
-  const handleFarmerLookup = async (aadhar) => {
-    if (!aadhar || aadhar.length !== 12) {
-      setErrorMessage('Please enter a valid 12-digit Aadhaar number.');
-      return;
-    }
-    setErrorMessage('');
-    setIsVerifying(true);
-
+  const fetchCentres = useCallback(async () => {
     try {
+      setLoadingCentres(true);
       let res;
       try {
-        res = await fetch(`${API_BASE}/api/farmers`);
+        res = await fetch(`${API_BASE}/api/capacity/centres`);
       } catch {
-        res = await fetch('/api/farmers');
+        res = await fetch('/api/capacity/centres');
       }
       if (res && res.ok) {
         const data = await res.json();
-        const match = data.farmers?.find(f => f.aadhar_number === aadhar);
-        if (match) {
-          setSelectedFarmer({
-            name: match.name,
-            aadhar: match.aadhar_number,
-            phone: match.phone,
-            land_size: match.land_size || '4.0 Acres',
-            plot_number: match.plot_number || 'N/A',
-            address: match.address
+        if (data.success && Array.isArray(data.centres) && data.centres.length > 0) {
+          setCentres(data.centres);
+          setSelectedCentre(prev => {
+            return data.centres.find(c => c._id === prev?._id) || data.centres[0];
           });
-          syncFarmerPassesFromServer(aadhar);
-          setIsVerifying(false);
-          return;
         }
       }
-    } catch (err) {
-      console.error('API Error during farmer lookup:', err);
+    } catch {
+      // Fallback data is active
+    } finally {
+      setLoadingCentres(false);
     }
+  }, []);
 
-    setErrorMessage('Aadhaar not found. Please register in AnnaSetu first.');
-    setSelectedFarmer({
-      name: 'Unregistered',
-      aadhar: aadhar,
-      phone: '---',
-      land_size: '---',
-      plot_number: '---',
-      address: '---'
-    });
-    setIsVerifying(false);
-  };
-
-  const syncFarmerPassesFromServer = async (aadhar) => {
+  const syncFarmerPassesFromServer = useCallback(async (aadhar) => {
     if (!aadhar) return;
     try {
       setLoadingPasses(true);
@@ -389,11 +323,230 @@ export default function SlotBooking() {
             setFarmerPayments(dataPay.payments);
           }
         }
-      } catch (payErr) {}
+      } catch {}
     } catch (err) {
       console.warn('Error syncing passes from server:', err);
     } finally {
       setLoadingPasses(false);
+    }
+  }, []);
+
+  // Fetch Centres & Active Farmer on Mount
+  useEffect(() => {
+    fetchCentres();
+    
+    // Auto-populate from logged-in farmer session & database
+    const initFarmer = async () => {
+      try {
+        let savedAadhaar = '';
+        const sessionRaw = localStorage.getItem('farmer_session');
+        if (sessionRaw) {
+          try {
+            const parsed = JSON.parse(sessionRaw);
+            savedAadhaar = parsed.aadhar || '';
+            if (savedAadhaar) {
+              setSelectedFarmer({
+                name: parsed.name || 'Registered Kisan',
+                aadhar: parsed.aadhar,
+                phone: parsed.phone || '---',
+                land_size: parsed.land_size || '---',
+                plot_number: parsed.plot_number || '---',
+                address: parsed.address || '---'
+              });
+              syncFarmerPassesFromServer(savedAadhaar);
+            }
+          } catch {}
+        }
+
+        if (!savedAadhaar) {
+          savedAadhaar = localStorage.getItem('farmer_aadhar') || '';
+        }
+
+        // Fetch freshest farmer record from database if registered
+        let res;
+        try { res = await fetch(`${API_BASE}/api/farmers`); }
+        catch { res = await fetch('/api/farmers'); }
+        if (res && res.ok) {
+          const data = await res.json();
+          if (data.farmers && data.farmers.length > 0) {
+            const match = data.farmers.find(f => f.aadhar_number === savedAadhaar);
+            if (match) {
+              setSelectedFarmer({
+                name: match.name,
+                aadhar: match.aadhar_number,
+                phone: match.phone,
+                land_size: match.land_size || '5.0 Acres',
+                plot_number: match.plot_number || 'B-452',
+                address: match.address
+              });
+              syncFarmerPassesFromServer(match.aadhar_number);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error initializing farmer profile:', err);
+      }
+    };
+    initFarmer();
+  }, [fetchCentres, syncFarmerPassesFromServer]);
+
+  // Fetch Slots when Centre or Date changes
+  useEffect(() => {
+    if (selectedCentre?._id && selectedDate) {
+      fetchSlots(selectedCentre._id, selectedDate);
+    }
+  }, [selectedCentre?._id, selectedDate, fetchSlots]);
+
+  // In-Place Reschedule Handlers for SlotBooking
+  const fetchSlotsForReschedule = async (centreIdOrName, targetDate) => {
+    setLoadingRescheduleSlots(true);
+    try {
+      let centreId = centreIdOrName;
+      if (!centreId || typeof centreId !== 'string' || centreId.length !== 24) {
+        const found = centres.find(c => c.name === centreIdOrName || c._id === centreIdOrName);
+        centreId = found?._id || centres[0]?._id;
+      }
+      if (!centreId) return;
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/api/capacity/centres/${centreId}/slots?date=${targetDate}`);
+      } catch {
+        res = await fetch(`/api/capacity/centres/${centreId}/slots?date=${targetDate}`);
+      }
+      const data = await res.json();
+      if (data.success && Array.isArray(data.slots)) {
+        setRescheduleSlotsList(data.slots);
+      }
+    } catch (err) {
+      console.warn('Error fetching reschedule slots:', err);
+    } finally {
+      setLoadingRescheduleSlots(false);
+    }
+  };
+
+  const handleOpenRescheduleModal = (pass) => {
+    setReschedulePass(pass);
+    const nextDate = pass?.booking_date || todayLocal;
+    setRescheduleDate(nextDate);
+    setRescheduleSlotCode(pass?.slot_code || 'SLOT_1_MORNING');
+    setRescheduleSlotName(pass?.slot_name || 'Slot 1: Morning (09:00 AM - 12:00 PM)');
+    setRescheduleFeedback(null);
+    fetchSlotsForReschedule(pass?.centre_id || pass?.centre_name, nextDate);
+  };
+
+  const handleRescheduleDateChange = (newDate) => {
+    setRescheduleDate(newDate);
+    if (reschedulePass) {
+      fetchSlotsForReschedule(reschedulePass.centre_id || reschedulePass.centre_name, newDate);
+    }
+  };
+
+  const handleConfirmReschedule = async () => {
+    if (!reschedulePass) return;
+    setIsRescheduling(true);
+    setRescheduleFeedback(null);
+    try {
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/api/booking/reschedule`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token_id: reschedulePass.token_id,
+            farmer_aadhar: selectedFarmer.aadhar,
+            new_date: rescheduleDate,
+            new_slot_code: rescheduleSlotCode,
+            new_slot_name: rescheduleSlotName
+          })
+        });
+      } catch {
+        res = await fetch(`/api/booking/reschedule`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token_id: reschedulePass.token_id,
+            farmer_aadhar: selectedFarmer.aadhar,
+            new_date: rescheduleDate,
+            new_slot_code: rescheduleSlotCode,
+            new_slot_name: rescheduleSlotName
+          })
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to reschedule slot');
+      }
+      setReschedulePass(null);
+      if (activePassModal && activePassModal.token_id === reschedulePass.token_id) {
+        setActivePassModal(data.booking || null);
+      }
+      setActionSuccessBanner(data.message || 'Slot rescheduled successfully!');
+      setTimeout(() => setActionSuccessBanner(''), 5000);
+      await syncFarmerPassesFromServer(selectedFarmer.aadhar);
+      if (selectedCentre?._id) {
+        fetchSlots(selectedCentre._id, selectedDate);
+      }
+    } catch (err) {
+      setRescheduleFeedback(err.message);
+    } finally {
+      setIsRescheduling(false);
+    }
+  };
+
+  // In-Place Cancellation Handlers for SlotBooking
+  const handleOpenCancelModal = (pass) => {
+    setCancelPass(pass);
+    setCancelReason('');
+    setCancelCustomRemark('');
+    setCancelFeedback(null);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!cancelPass) return;
+    setIsCancelling(true);
+    setCancelFeedback(null);
+    try {
+      const chosenReason = cancelCustomRemark.trim() || cancelReason || (isHindi ? 'व्यक्तिगत या लॉजिस्टिक्स कारण' : 'Personal / Logistics Emergency');
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/api/booking/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token_id: cancelPass.token_id,
+            farmer_aadhar: selectedFarmer.aadhar,
+            reason: chosenReason
+          })
+        });
+      } catch {
+        res = await fetch(`/api/booking/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token_id: cancelPass.token_id,
+            farmer_aadhar: selectedFarmer.aadhar,
+            reason: chosenReason
+          })
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to cancel token');
+      }
+      setCancelPass(null);
+      if (activePassModal && activePassModal.token_id === cancelPass.token_id) {
+        setActivePassModal(null);
+      }
+      setActionSuccessBanner(data.message || 'Gate pass cancelled successfully!');
+      setTimeout(() => setActionSuccessBanner(''), 5000);
+      await syncFarmerPassesFromServer(selectedFarmer.aadhar);
+      if (selectedCentre?._id) {
+        fetchSlots(selectedCentre._id, selectedDate);
+      }
+    } catch (err) {
+      setCancelFeedback(err.message);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -562,6 +715,263 @@ export default function SlotBooking() {
     ]).values()
   );
 
+  // In-Place Reschedule Modal Component for SlotBooking
+  const renderRescheduleModal = () => {
+    if (!reschedulePass) return null;
+    const currentWeight = Number(reschedulePass.estimated_weight_quintals) || 45;
+
+    return (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in overflow-y-auto">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-emerald-600 relative my-8">
+          <button 
+            onClick={() => setReschedulePass(null)}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1 cursor-pointer"
+          >
+            ✕
+          </button>
+
+          <div className="p-6 bg-emerald-50/60 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-12 h-12 bg-emerald-100 rounded-full border-2 border-emerald-300 flex items-center justify-center text-2xl shadow-inner shrink-0 text-emerald-800">
+              📅
+            </div>
+            <div>
+              <span className="text-3xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                {isHindi ? 'रोलिंग 7-दिवसीय शेड्यूलिंग' : 'Rolling 7-Day Window'}
+              </span>
+              <h3 className="text-lg font-black text-gray-900 mt-0.5">
+                {t("tracker_reschedule_modal_title", "Reschedule Mandi Slot")}
+              </h3>
+              <p className="text-xs text-gray-500 font-mono">Token: {reschedulePass.token_id} • {currentWeight} Qtl</p>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-4 text-xs text-gray-800">
+            <p className="text-gray-600 font-medium">
+              {t("tracker_reschedule_modal_desc", "Select a new date and 3-hour shift within the rolling 7-day window:")}
+            </p>
+
+            {/* 1. Date Selector */}
+            <div>
+              <label className="block text-3xs font-bold text-gray-500 uppercase mb-1.5">
+                {isHindi ? 'नई मंडी आगमन तिथि चुनें:' : 'Select New Arrival Date:'}
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {rescheduleDateOptions.map((opt) => {
+                  const isSelected = rescheduleDate === opt.dateStr;
+                  return (
+                    <button
+                      key={opt.dateStr}
+                      type="button"
+                      onClick={() => handleRescheduleDateChange(opt.dateStr)}
+                      className={`p-2 rounded-xl border text-center font-bold text-xs transition cursor-pointer ${
+                        isSelected
+                          ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm'
+                          : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-emerald-50 hover:border-emerald-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Shift Slots Selector */}
+            <div>
+              <label className="block text-3xs font-bold text-gray-500 uppercase mb-1.5">
+                {isHindi ? '3-घंटे की शिफ्ट चुनें:' : 'Select 3-Hour Intake Shift:'}
+              </label>
+              {loadingRescheduleSlots ? (
+                <div className="py-6 text-center text-gray-400 italic">
+                  <span className="inline-block animate-spin mr-1.5">⏳</span> {isHindi ? 'शिफ्ट क्षमता जांची जा रही है...' : 'Checking live shift capacity...'}
+                </div>
+              ) : rescheduleSlotsList.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">{isHindi ? 'स्लॉट लोड हो रहे हैं...' : 'Loading slots...'}</p>
+              ) : (
+                <div className="space-y-2">
+                  {rescheduleSlotsList.map((s) => {
+                    const maxCap = s.max_capacity_quintals || 400;
+                    const booked = s.booked_capacity_quintals || 0;
+                    const avail = Math.max(0, maxCap - booked);
+                    const isFull = avail < currentWeight;
+                    const isSelected = rescheduleSlotCode === s.slot_code;
+
+                    return (
+                      <div
+                        key={s.slot_code}
+                        onClick={() => {
+                          if (!isFull) {
+                            setRescheduleSlotCode(s.slot_code);
+                            setRescheduleSlotName(s.slot_name);
+                          }
+                        }}
+                        className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between ${
+                          isFull
+                            ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
+                            : isSelected
+                              ? 'bg-emerald-50 border-emerald-600 shadow-sm cursor-pointer ring-2 ring-emerald-100'
+                              : 'bg-white border-gray-200 hover:border-emerald-300 cursor-pointer'
+                        }`}
+                      >
+                        <div>
+                          <p className="font-extrabold text-xs text-gray-900">{s.slot_name}</p>
+                          <p className="text-3xs text-gray-500 mt-0.5">
+                            {isHindi ? 'उपलब्ध क्षमता:' : 'Available Capacity:'} <strong className={avail > 100 ? 'text-emerald-700' : 'text-amber-700'}>{avail} Q</strong> / {maxCap} Q
+                          </p>
+                        </div>
+                        <span className={`text-2xs font-extrabold px-2 py-0.5 rounded-full uppercase ${
+                          isFull 
+                            ? 'bg-red-100 text-red-700' 
+                            : isSelected 
+                              ? 'bg-emerald-700 text-white' 
+                              : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {isFull ? (isHindi ? 'भर गया' : 'Full') : isSelected ? '✓ Selected' : (isHindi ? 'उपलब्ध' : 'Available')}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {rescheduleFeedback && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-2xs font-bold">
+                ⚠️ {rescheduleFeedback}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button 
+                onClick={() => setReschedulePass(null)}
+                disabled={isRescheduling}
+                className="w-1/3 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-lg hover:bg-gray-200 transition-colors text-xs cursor-pointer disabled:opacity-50"
+              >
+                {isHindi ? 'रद्द करें' : 'Cancel'}
+              </button>
+              <button 
+                onClick={handleConfirmReschedule}
+                disabled={isRescheduling || loadingRescheduleSlots}
+                className="w-2/3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg transition-colors shadow-md text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <span>📅</span> {isRescheduling ? t("tracker_rescheduling") : t("tracker_reschedule_confirm_btn")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // In-Place Cancel Modal Component for SlotBooking
+  const renderCancelModal = () => {
+    if (!cancelPass) return null;
+
+    return (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in overflow-y-auto">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 border-red-600 relative my-8">
+          <button 
+            onClick={() => setCancelPass(null)}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold p-1 cursor-pointer"
+          >
+            ✕
+          </button>
+
+          <div className="p-6 bg-red-50/60 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-12 h-12 bg-red-100 rounded-full border-2 border-red-300 flex items-center justify-center text-2xl shadow-inner shrink-0 text-red-700">
+              🚫
+            </div>
+            <div>
+              <span className="text-3xs font-extrabold uppercase tracking-wider text-red-800 bg-red-100 px-2 py-0.5 rounded">
+                {isHindi ? 'पूर्व-आगमन कार्रवाई' : 'Pre-Arrival Action'}
+              </span>
+              <h3 className="text-lg font-black text-gray-900 mt-0.5">
+                {t("tracker_cancel_modal_title", "Cancel Gate Pass Token")}
+              </h3>
+              <p className="text-xs text-gray-500 font-mono">Token: {cancelPass.token_id}</p>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-4 text-xs text-gray-800">
+            <p className="text-gray-600 font-medium">
+              {t("tracker_cancel_modal_desc", "Are you sure you want to cancel this booking? The reserved Mandi capacity will be released.")}
+            </p>
+
+            <div>
+              <span className="text-gray-500 font-bold block text-3xs uppercase mb-1.5">
+                {t("tracker_cancel_reason_label", "Select Cancellation Reason:")}
+              </span>
+              <div className="space-y-1.5 mb-3">
+                {presetReasons.map((r, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      setCancelReason(r);
+                      setCancelCustomRemark('');
+                    }}
+                    className={`w-full text-left p-2.5 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                      cancelReason === r && !cancelCustomRemark
+                        ? 'bg-red-50 border-red-400 text-red-950 font-bold shadow-xs'
+                        : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    • {r}
+                  </button>
+                ))}
+              </div>
+
+              <label className="block text-3xs font-bold text-gray-500 uppercase mb-1">
+                {t("tracker_cancel_custom_ph", "Or enter specific reason...")}
+              </label>
+              <textarea
+                value={cancelCustomRemark}
+                onChange={(e) => setCancelCustomRemark(e.target.value)}
+                placeholder={isHindi ? 'विशिष्ट कारण दर्ज करें...' : 'Enter specific reason...'}
+                className="w-full border border-gray-300 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none focus:border-red-500 font-medium"
+                rows={2}
+              />
+            </div>
+
+            {cancelFeedback && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-2xs font-bold">
+                ⚠️ {cancelFeedback}
+              </div>
+            )}
+
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-2xs text-amber-900 space-y-1">
+              <p className="font-bold flex items-center gap-1">
+                <span>⚠️</span> {isHindi ? 'नोट:' : 'Notice:'}
+              </p>
+              <p>
+                {isHindi 
+                  ? 'रद्द करने पर यह टोकन निष्क्रिय हो जाएगा और आरक्षित स्लॉट क्षमता अन्य किसानों के लिए तुरंत उपलब्ध हो जाएगी।'
+                  : 'Upon cancellation, this gate pass token will be deactivated and the reserved capacity will be immediately released.'}
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button 
+                onClick={() => setCancelPass(null)}
+                disabled={isCancelling}
+                className="w-1/3 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-lg hover:bg-gray-200 transition-colors text-xs cursor-pointer disabled:opacity-50"
+              >
+                {isHindi ? 'वापस जाएं' : 'Back'}
+              </button>
+              <button 
+                onClick={handleConfirmCancel}
+                disabled={isCancelling}
+                className="w-2/3 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-lg transition-colors shadow-md text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <span>🚫</span> {isCancelling ? t("tracker_cancelling") : t("tracker_cancel_confirm_btn")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const isVerified = Boolean(selectedFarmer && selectedFarmer.name !== 'Unregistered');
   const isStep1Complete = Boolean(isVerified && selectedFarmer?.aadhar && selectedCentre);
   const isStep2Complete = Boolean(isStep1Complete && selectedDate && selectedSlot && remainingSlotCap > 0);
@@ -582,13 +992,13 @@ export default function SlotBooking() {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-700/60 border border-emerald-500/40 rounded-full text-xs font-semibold uppercase tracking-wider text-emerald-200 mb-3">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                TOKEN & SLOT ENGINE
+                {t('sb_badge')}
               </div>
               <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
-                Mandi Slot Booking & Digital Gate Pass
+                {t('sb_title')}
               </h1>
               <p className="text-emerald-100/90 text-sm sm:text-base mt-1 max-w-2xl">
-                Reserve your guaranteed 3-hour grain intake window at national procurement terminals, prevent Mandi bottlenecks, and generate verified QR tokens.
+                {t('sb_desc')}
               </p>
             </div>
 
@@ -602,7 +1012,7 @@ export default function SlotBooking() {
                     : 'text-emerald-200 hover:text-white'
                 }`}
               >
-                ⚡ New Slot Booking
+                {t('sb_tab_book')}
               </button>
               <button
                 onClick={() => {
@@ -615,7 +1025,7 @@ export default function SlotBooking() {
                     : 'text-emerald-200 hover:text-white'
                 }`}
               >
-                🚛 Active Passes ({farmerPasses.length})
+                {t('sb_tab_active')} ({farmerPasses.length})
               </button>
               <button
                 onClick={() => {
@@ -628,7 +1038,7 @@ export default function SlotBooking() {
                     : 'text-emerald-200 hover:text-white'
                 }`}
               >
-                ✅ Previous Tokens ({settledPasses.length})
+                {t('sb_tab_settled')} ({settledPasses.length})
               </button>
             </div>
           </div>
@@ -655,10 +1065,10 @@ export default function SlotBooking() {
             <div>
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <span>🚛</span>
-                <span>Active Gate Passes</span>
+                <span>{t('sb_active_title')}</span>
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Showing in-progress procurement passes for {selectedFarmer.name} (Aadhaar: {selectedFarmer.aadhar})
+                {t('sb_active_desc')} {selectedFarmer.name} (Aadhaar: {selectedFarmer.aadhar})
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -668,26 +1078,33 @@ export default function SlotBooking() {
                 className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
                 <span>🔄</span>
-                <span>{loadingPasses ? 'Syncing...' : 'Sync Server'}</span>
+                <span>{loadingPasses ? '...' : t('sb_sync_server')}</span>
               </button>
               <button
                 onClick={() => setActiveTab('book')}
                 className="bg-brand text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-brand-dark transition-colors cursor-pointer"
               >
-                + Book Another Slot
+                {t('sb_book_another')}
               </button>
             </div>
           </div>
 
+          {actionSuccessBanner && (
+            <div className="mb-4 p-3 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-md flex items-center justify-between animate-fade-in">
+              <span>{actionSuccessBanner}</span>
+              <span className="text-emerald-200 text-3xs font-mono">Synced with Mandi Engine</span>
+            </div>
+          )}
+
           {loadingPasses ? (
             <div className="py-16 text-center text-gray-500">
               <div className="inline-block w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-              <p className="text-sm font-semibold">Fetching active gate passes...</p>
+              <p className="text-sm font-semibold">...</p>
             </div>
           ) : farmerPasses.length === 0 ? (
             <div className="py-16 text-center text-gray-400 space-y-3">
               <div className="text-5xl mb-2">🎫</div>
-              <p className="text-base font-semibold text-gray-700">No active gate passes in queue</p>
+              <p className="text-base font-semibold text-gray-700">{t('sb_no_active')}</p>
               <p className="text-xs text-gray-400 max-w-md mx-auto">
                 {settledPasses.length > 0 
                   ? 'All your previous grain consignments have completed intake and DBT payment. You can view them in the Previous Tokens tab.'
@@ -698,76 +1115,116 @@ export default function SlotBooking() {
                   onClick={() => setActiveTab('book')}
                   className="bg-brand text-white px-5 py-2.5 rounded-lg text-xs font-bold hover:bg-brand-dark transition-colors shadow-md cursor-pointer"
                 >
-                  + Book a New Slot
+                  {t('sb_book_another')}
                 </button>
                 {settledPasses.length > 0 && (
                   <button
                     onClick={() => setActiveTab('settled')}
                     className="bg-emerald-50 text-emerald-800 border border-emerald-300 px-4 py-2.5 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-colors cursor-pointer"
                   >
-                    View Settled Tokens ({settledPasses.length})
+                    {t('sb_tab_settled')} ({settledPasses.length})
                   </button>
                 )}
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-              {farmerPasses.map((pass) => (
-                <div
-                  key={pass.token_id}
-                  className="border-2 border-emerald-100 hover:border-emerald-500 rounded-xl p-5 bg-gradient-to-br from-emerald-50/40 via-white to-white shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-mono text-sm font-bold text-emerald-900 bg-emerald-100 px-3 py-1 rounded-md border border-emerald-300">
-                        {pass.token_id}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-600 text-white uppercase tracking-wider">
-                        {pass.status || 'CONFIRMED'}
-                      </span>
+              {farmerPasses.map((pass) => {
+                const isCancelled = pass.status === 'cancelled';
+
+                return (
+                  <div
+                    key={pass.token_id}
+                    className={`border-2 rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${
+                      isCancelled
+                        ? 'border-gray-300 bg-gray-50/80 opacity-80'
+                        : 'border-emerald-100 hover:border-emerald-500 bg-gradient-to-br from-emerald-50/40 via-white to-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-mono text-sm font-bold text-emerald-900 bg-emerald-100 px-3 py-1 rounded-md border border-emerald-300">
+                          {pass.token_id}
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                          isCancelled
+                            ? 'bg-gray-200 text-gray-800 border border-gray-400'
+                            : 'bg-emerald-600 text-white'
+                        }`}>
+                          {isCancelled ? t('tracker_cancelled_badge', '🚫 Cancelled') : (pass.status || 'CONFIRMED')}
+                        </span>
+                      </div>
+
+                      <h3 className="font-bold text-gray-900 text-base">{getCropDisplayName(pass.crop_type, t)}</h3>
+                      <p className="text-xs text-gray-600 mt-0.5">{pass.centre_name}</p>
+
+                      <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-gray-100 text-xs">
+                        <div>
+                          <span className="text-gray-400 block">{t('sb_pass_date')}</span>
+                          <span className="font-semibold text-gray-800">{pass.booking_date}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block">{t('sb_pass_shift')}</span>
+                          <span className="font-semibold text-gray-800">{pass.slot_name?.split('(')[1]?.replace(')', '') || pass.slot_name}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block">{t('sb_pass_allotted')}</span>
+                          <span className="font-bold text-emerald-700">{pass.estimated_weight_quintals} {t('sb_quintals')}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block">{t('sb_pass_farmer')}</span>
+                          <span className="font-semibold text-gray-800">{pass.farmer_name}</span>
+                        </div>
+                      </div>
+
+                      {isCancelled && (
+                        <div className="mt-3 p-2 bg-gray-100 rounded-lg text-3xs text-gray-600 border border-gray-200">
+                          <span>🚫 {t('tracker_pass_cancelled_desc', 'This token was cancelled prior to Mandi arrival. Reserved capacity has been restored.')}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <h3 className="font-bold text-gray-900 text-base">{pass.crop_type}</h3>
-                    <p className="text-xs text-gray-600 mt-0.5">{pass.centre_name}</p>
+                    <div className="mt-4 space-y-2">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setActivePassModal(pass)}
+                          className="flex-1 bg-emerald-800 text-white py-2 rounded-lg text-xs font-bold hover:bg-emerald-900 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <span>👁️</span>
+                          <span>{t('sb_view_pass')}</span>
+                        </button>
+                        <button
+                          onClick={() => navigate(`/tracker?token=${pass.token_id}`)}
+                          className="flex-1 bg-brand text-white py-2 rounded-lg text-xs font-bold hover:bg-brand-dark transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <span>🛰️</span>
+                          <span>{t('sb_track_live')}</span>
+                        </button>
+                      </div>
 
-                    <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-gray-100 text-xs">
-                      <div>
-                        <span className="text-gray-400 block">Scheduled Date:</span>
-                        <span className="font-semibold text-gray-800">{pass.booking_date}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400 block">Shift Timing:</span>
-                        <span className="font-semibold text-gray-800">{pass.slot_name?.split('(')[1]?.replace(')', '') || pass.slot_name}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400 block">Allotted Grain:</span>
-                        <span className="font-bold text-emerald-700">{pass.estimated_weight_quintals} Quintals</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400 block">Farmer:</span>
-                        <span className="font-semibold text-gray-800">{pass.farmer_name}</span>
-                      </div>
+                      {/* Pre-Gate Reschedule & Cancel Buttons */}
+                      {!isCancelled && (
+                        <div className="flex gap-2 pt-1 border-t border-gray-100">
+                          <button
+                            onClick={() => handleOpenRescheduleModal(pass)}
+                            className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <span>📅</span>
+                            <span>{t('tracker_reschedule_btn', 'Reschedule Slot')}</span>
+                          </button>
+                          <button
+                            onClick={() => handleOpenCancelModal(pass)}
+                            className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <span>🚫</span>
+                            <span>{t('tracker_cancel_btn', 'Cancel Gate Pass')}</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  <div className="flex gap-2 mt-4">
-                    <button
-                      onClick={() => setActivePassModal(pass)}
-                      className="flex-1 bg-emerald-800 text-white py-2 rounded-lg text-xs font-bold hover:bg-emerald-900 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <span>👁️</span>
-                      <span>View Pass</span>
-                    </button>
-                    <button
-                      onClick={() => navigate(`/tracker?token=${pass.token_id}`)}
-                      className="flex-1 bg-brand text-white py-2 rounded-lg text-xs font-bold hover:bg-brand-dark transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                    >
-                      <span>🛰️</span>
-                      <span>Track Live</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -780,7 +1237,7 @@ export default function SlotBooking() {
             <div>
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <span>✅</span>
-                <span>Previous & Settled Tokens (DBT Complete)</span>
+                <span>{t('sb_settled_title')}</span>
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
                 Archived tokens whose physical intake and PFMS DBT payments have been disbursed for {selectedFarmer.name}
@@ -793,14 +1250,14 @@ export default function SlotBooking() {
                 className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
                 <span>🔄</span>
-                <span>{loadingPasses ? 'Syncing...' : 'Sync Server'}</span>
+                <span>{loadingPasses ? '...' : t('sb_sync_server')}</span>
               </button>
               <button
                 onClick={() => navigate('/payments')}
                 className="bg-emerald-800 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-900 transition-colors shadow flex items-center gap-1.5 cursor-pointer"
               >
                 <span>💳</span>
-                <span>Open DBT Treasury Portal</span>
+                <span>{t('sb_open_dbt')}</span>
               </button>
             </div>
           </div>
@@ -808,7 +1265,7 @@ export default function SlotBooking() {
           {settledPasses.length === 0 ? (
             <div className="py-16 text-center text-gray-400 space-y-3">
               <div className="text-5xl mb-2">📜</div>
-              <p className="text-base font-semibold text-gray-700">No Previous Settled Tokens Found</p>
+              <p className="text-base font-semibold text-gray-700">{t('sb_no_settled')}</p>
               <p className="text-xs text-gray-400 max-w-md mx-auto">
                 When an active token completes Stage 5 (J-Form Approved & Disbursed via DBT), it will automatically be moved to this archive.
               </p>
@@ -816,7 +1273,7 @@ export default function SlotBooking() {
                 onClick={() => setActiveTab('book')}
                 className="mt-2 bg-brand text-white px-5 py-2.5 rounded-lg text-xs font-bold hover:bg-brand-dark transition-colors shadow-md cursor-pointer"
               >
-                Book a Procurement Slot
+                {t('sb_tab_book')}
               </button>
             </div>
           ) : (
@@ -833,28 +1290,28 @@ export default function SlotBooking() {
                       </span>
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase tracking-wider flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                        <span>DBT Settled</span>
+                        <span>{t('sb_dbt_settled')}</span>
                       </span>
                     </div>
 
-                    <h3 className="font-bold text-gray-900 text-base">{pass.crop_type}</h3>
+                    <h3 className="font-bold text-gray-900 text-base">{getCropDisplayName(pass.crop_type, t)}</h3>
                     <p className="text-xs text-gray-600 mt-0.5">{pass.centre_name}</p>
 
                     <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-gray-100 text-xs">
                       <div>
-                        <span className="text-gray-400 block">J-Form Number:</span>
+                        <span className="text-gray-400 block">{t('sb_jform')}</span>
                         <span className="font-mono font-bold text-emerald-900">{pass.j_form_number || 'N/A'}</span>
                       </div>
                       <div>
-                        <span className="text-gray-400 block">Gross Disbursed:</span>
+                        <span className="text-gray-400 block">{t('sb_gross_disbursed')}</span>
                         <span className="font-extrabold text-emerald-800 text-sm">₹{Number(pass.gross_payout || 102830).toLocaleString('en-IN')}</span>
                       </div>
                       <div>
-                        <span className="text-gray-400 block">Evaluated Weight:</span>
+                        <span className="text-gray-400 block">{t('sb_eval_weight')}</span>
                         <span className="font-bold text-gray-800">{pass.estimated_weight_quintals} Q</span>
                       </div>
                       <div>
-                        <span className="text-gray-400 block">Disbursal Date:</span>
+                        <span className="text-gray-400 block">{t('sb_disbursal_date')}</span>
                         <span className="font-semibold text-gray-800">{pass.booking_date}</span>
                       </div>
                     </div>
@@ -866,14 +1323,14 @@ export default function SlotBooking() {
                       className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                     >
                       <span>📄</span>
-                      <span>View Payment Voucher</span>
+                      <span>{t('sb_view_receipt')}</span>
                     </button>
                     <button
                       onClick={() => navigate(`/tracker?token=${pass.token_id}`)}
                       className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <span>🛰️</span>
-                      <span>Audit Trail</span>
+                      <span>{t('sb_audit_trail')}</span>
                     </button>
                   </div>
                 </div>
@@ -891,7 +1348,7 @@ export default function SlotBooking() {
             {/* Mobile Step Header */}
             <div className="block sm:hidden mb-3 text-center">
               <span className="text-2xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full">
-                Step {currentStep} of 3: {currentStep === 1 ? 'Farmer & Mandi' : currentStep === 2 ? '3-Hour Shift' : 'Crop & Load'}
+                {t('sb_step')} {currentStep} {t('sb_of')} 3: {currentStep === 1 ? t('sb_step1_title') : currentStep === 2 ? t('sb_step2_title') : t('sb_step3_title')}
               </span>
             </div>
 
@@ -915,8 +1372,8 @@ export default function SlotBooking() {
                   {currentStep > 1 ? '✓' : '1'}
                 </div>
                 <div className="hidden sm:block">
-                  <p className="text-xs font-bold text-gray-900">Step 1</p>
-                  <p className="text-xs text-gray-500">Farmer & Mandi</p>
+                  <p className="text-xs font-bold text-gray-900">{t('sb_step')} 1</p>
+                  <p className="text-xs text-gray-500">{t('sb_step1_title')}</p>
                 </div>
               </div>
 
@@ -948,8 +1405,8 @@ export default function SlotBooking() {
                   {currentStep > 2 ? '✓' : '2'}
                 </div>
                 <div className="hidden sm:block">
-                  <p className="text-xs font-bold text-gray-900">Step 2</p>
-                  <p className="text-xs text-gray-500">3-Hour Shift</p>
+                  <p className="text-xs font-bold text-gray-900">{t('sb_step')} 2</p>
+                  <p className="text-xs text-gray-500">{t('sb_step2_title')}</p>
                 </div>
               </div>
 
@@ -981,8 +1438,8 @@ export default function SlotBooking() {
                   3
                 </div>
                 <div className="hidden sm:block">
-                  <p className="text-xs font-bold text-gray-900">Step 3</p>
-                  <p className="text-xs text-gray-500">Crop & Token</p>
+                  <p className="text-xs font-bold text-gray-900">{t('sb_step')} 3</p>
+                  <p className="text-xs text-gray-500">{t('sb_step3_title')}</p>
                 </div>
               </div>
             </div>
@@ -1004,7 +1461,7 @@ export default function SlotBooking() {
                           {selectedFarmer.name}
                         </h3>
                         <span className="bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full">
-                          ✓ Verified
+                          {t('sb_verified')}
                         </span>
                       </div>
                       <p className="text-[11px] sm:text-xs text-emerald-200/90 font-mono mt-0.5 truncate">
@@ -1014,7 +1471,7 @@ export default function SlotBooking() {
                   </div>
 
                   <div className="text-right shrink-0 bg-white/10 backdrop-blur-sm px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-white/15">
-                    <span className="text-[9px] sm:text-[10px] uppercase text-emerald-300 font-extrabold tracking-wider block">Holding</span>
+                    <span className="text-[9px] sm:text-[10px] uppercase text-emerald-300 font-extrabold tracking-wider block">{t('sb_holding')}</span>
                     <span className="font-black text-white text-xs sm:text-sm">{selectedFarmer.land_size || 'N/A'}</span>
                   </div>
                 </div>
@@ -1025,10 +1482,10 @@ export default function SlotBooking() {
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-2 border-b border-gray-100">
                   <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                     <span className="p-1 sm:p-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs sm:text-sm">🏢</span>
-                    Select Procurement Mandi
+                    {t('sb_select_mandi')}
                   </h2>
                   <span className="text-[11px] sm:text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                    {centres.length} Terminals Live
+                    {centres.length} {t('sb_terminals_live')}
                   </span>
                 </div>
 
@@ -1072,11 +1529,11 @@ export default function SlotBooking() {
                               </span>
                               {isDiverted ? (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-500 text-white uppercase animate-pulse">
-                                  Traffic Divert
+                                  {t('sb_traffic_divert')}
                                 </span>
                               ) : (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-800 uppercase">
-                                  Normal Intake
+                                  {t('sb_normal_intake')}
                                 </span>
                               )}
                             </div>
@@ -1094,9 +1551,9 @@ export default function SlotBooking() {
                           <div className="w-full md:w-1/3 min-w-0 md:min-w-[220px] shrink-0 mt-2 md:mt-0 pt-2 md:pt-0 border-t md:border-t-0 border-gray-100">
                             <div className="space-y-1">
                               <div className="flex justify-between text-[11px] sm:text-xs font-bold text-gray-600">
-                                <span>Live Capacity:</span>
+                                <span>{t('sb_live_capacity')}</span>
                                 <span className={util >= 85 ? 'text-red-600' : util >= 60 ? 'text-amber-600' : 'text-emerald-700'}>
-                                  {util}% ({available} Q Left)
+                                  {util}% ({available} Q {t('sb_left')})
                                 </span>
                               </div>
                               <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
@@ -1136,7 +1593,7 @@ export default function SlotBooking() {
                     disabled={!isStep1Complete}
                     className="bg-brand text-white px-8 py-3.5 rounded-xl font-bold text-sm hover:bg-brand-dark transition-all shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    <span>Proceed to Select Shift</span>
+                    <span>{t('sb_proceed_shift')}</span>
                     <span>➔</span>
                   </button>
                 </div>
@@ -1152,7 +1609,7 @@ export default function SlotBooking() {
                 {/* Selected Centre Summary Ribbon */}
                 <div className="mb-6 p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center justify-between shadow-sm">
                   <div>
-                    <span className="text-2xs font-extrabold text-gray-500 uppercase tracking-wider block mb-0.5">Selected Centre</span>
+                    <span className="text-2xs font-extrabold text-gray-500 uppercase tracking-wider block mb-0.5">{t('sb_selected_mandi')}</span>
                     <span className="font-bold text-emerald-900 text-sm flex items-center gap-2">
                       <span>🏢</span> {selectedCentre?.name}
                     </span>
@@ -1161,7 +1618,7 @@ export default function SlotBooking() {
                     onClick={() => setCurrentStep(1)}
                     className="text-xs font-bold text-brand hover:text-brand-dark underline cursor-pointer"
                   >
-                    Change Mandi
+                    {t('sb_change_mandi')}
                   </button>
                 </div>
 
@@ -1169,16 +1626,16 @@ export default function SlotBooking() {
                 <div className="pb-4 sm:pb-6 mb-4 sm:mb-6 border-b border-gray-100">
                   <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 mb-3">
                     <span className="p-1 sm:p-1.5 bg-blue-100 text-blue-800 rounded-lg text-xs sm:text-sm">📅</span>
-                    Select Booking Date
+                    {t('sb_select_date')}
                   </h2>
 
                   <div className="bg-gray-50 p-3.5 sm:p-5 rounded-2xl border border-gray-200 space-y-3">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <label className="block text-xs font-bold text-gray-700">
-                        Desired Intake Date <span className="text-gray-400 font-mono font-normal">(DD/MM/YYYY)</span>:
+                        {t('sb_desired_date')} <span className="text-gray-400 font-mono font-normal">(DD/MM/YYYY)</span>:
                       </label>
                       <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                        Selected: {formatDateDisplay(selectedDate)}
+                        {t('sb_selected_badge')}: {formatDateDisplay(selectedDate)}
                       </span>
                     </div>
 
@@ -1193,7 +1650,7 @@ export default function SlotBooking() {
                             : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 shadow-2xs'
                         }`}
                       >
-                        ⚡ Today ({formatDateDisplay(todayLocal)})
+                        ⚡ {t('sb_today')} ({formatDateDisplay(todayLocal)})
                       </button>
                       <button
                         type="button"
@@ -1204,7 +1661,7 @@ export default function SlotBooking() {
                             : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 shadow-2xs'
                         }`}
                       >
-                        📅 Tomorrow ({formatDateDisplay(tomorrowLocal)})
+                        📅 {t('sb_tomorrow')} ({formatDateDisplay(tomorrowLocal)})
                       </button>
                       <button
                         type="button"
@@ -1215,7 +1672,7 @@ export default function SlotBooking() {
                             : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 shadow-2xs'
                         }`}
                       >
-                        📆 In 2 Days ({formatDateDisplay(dayAfterLocal)})
+                        📆 {t('sb_in_2_days')} ({formatDateDisplay(dayAfterLocal)})
                       </button>
                     </div>
 
@@ -1245,7 +1702,7 @@ export default function SlotBooking() {
                 >
                   <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
                     <span className="p-1.5 bg-amber-100 text-amber-800 rounded-lg text-sm">⏰</span>
-                    Select 3-Hour Intake Shift
+                    {t('sb_select_shift')}
                   </h2>
 
                   {/* Shift Selection Cards */}
@@ -1268,14 +1725,13 @@ export default function SlotBooking() {
                       const available = Math.max(0, max - booked);
                       const util = max > 0 ? Math.min(100, Math.max(0, Math.round((booked / max) * 100))) : 0;
                       
-                      const todayDate = new Date().toISOString().split('T')[0];
-                      const isToday = selectedDate === todayDate;
+                      const isToday = selectedDate === todayLocal;
                       const currentHour = new Date().getHours();
                       let isExpired = false;
                       if (isToday) {
-                        if (slot.slot_code === 'SLOT_1_MORNING' && currentHour >= 9) isExpired = true;
-                        if (slot.slot_code === 'SLOT_2_AFTERNOON' && currentHour >= 12) isExpired = true;
-                        if (slot.slot_code === 'SLOT_3_EVENING' && currentHour >= 15) isExpired = true;
+                        if (slot.slot_code === 'SLOT_1_MORNING' && currentHour >= 12) isExpired = true;
+                        if (slot.slot_code === 'SLOT_2_AFTERNOON' && currentHour >= 15) isExpired = true;
+                        if (slot.slot_code === 'SLOT_3_EVENING' && currentHour >= 18) isExpired = true;
                       }
 
                       const isFull = available <= 0;
@@ -1300,7 +1756,7 @@ export default function SlotBooking() {
                           )}
                           {isExpired && (
                             <div className="absolute top-3 right-3 bg-red-100 text-red-600 px-2 py-1 rounded text-3xs font-extrabold uppercase border border-red-200">
-                              Time Passed
+                              {t('sb_time_passed')}
                             </div>
                           )}
                           {!isExpired && isFull && (
@@ -1314,18 +1770,18 @@ export default function SlotBooking() {
                               {slot.slot_code === 'SLOT_1_MORNING' ? '🌅' : slot.slot_code === 'SLOT_2_AFTERNOON' ? '☀️' : '🌇'}
                             </span>
                             <div>
-                              <span className="text-2xs font-extrabold uppercase text-gray-400 block">3-Hour Window</span>
+                              <span className="text-2xs font-extrabold uppercase text-gray-400 block">{t('sb_window_label')}</span>
                               <h3 className="font-bold text-gray-900 text-sm">{slot.slot_name}</h3>
                             </div>
                           </div>
 
                           <div className="my-3 py-2 px-3 bg-gray-50 rounded-lg border border-gray-100 space-y-1">
                             <div className="flex justify-between text-2xs">
-                              <span className="text-gray-500">Available Quota:</span>
-                              <span className="font-extrabold text-emerald-800">{available} Quintals</span>
+                              <span className="text-gray-500">{t('sb_available_quota')}</span>
+                              <span className="font-extrabold text-emerald-800">{available} {t('sb_quintals')}</span>
                             </div>
                             <div className="flex justify-between text-2xs">
-                              <span className="text-gray-500">Booked Capacity:</span>
+                              <span className="text-gray-500">{t('sb_booked_quota')}</span>
                               <span className="font-semibold text-gray-700">{booked} / {max} Q</span>
                             </div>
                           </div>
@@ -1333,7 +1789,7 @@ export default function SlotBooking() {
                           {/* Progress Bar */}
                           <div className="space-y-1">
                             <div className="flex justify-between text-2xs font-bold text-gray-500">
-                              <span>Slot Fullness:</span>
+                              <span>{t('sb_slot_fullness')}</span>
                               <span>{util}%</span>
                             </div>
                             <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
@@ -1349,7 +1805,7 @@ export default function SlotBooking() {
                           {isFull && (
                             <div className="mt-4 text-center">
                               <span className="text-2xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 block">
-                                ⛔ Shift Full (0 Q Left)
+                                {t('sb_shift_full')}
                               </span>
                             </div>
                           )}
@@ -1366,7 +1822,7 @@ export default function SlotBooking() {
                     onClick={() => setCurrentStep(1)}
                     className="px-5 py-3 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
                   >
-                    ← Back to Mandi Selection
+                    {t('sb_back_mandi')}
                   </button>
 
                   <button
@@ -1382,7 +1838,7 @@ export default function SlotBooking() {
                     disabled={!isStep2Complete}
                     className="bg-brand text-white px-8 py-3.5 rounded-xl font-bold text-sm hover:bg-brand-dark transition-all shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    <span>Proceed to Crop & Weight</span>
+                    <span>{t('sb_proceed_crop')}</span>
                     <span>➔</span>
                   </button>
                 </div>
@@ -1398,29 +1854,29 @@ export default function SlotBooking() {
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 pb-4 mb-4 border-b border-gray-100">
                   <span className="p-1.5 bg-yellow-100 text-yellow-800 rounded-lg text-sm">🌾</span>
-                  Confirm Crop Details & Grain Load (Quintals)
+                  {t('sb_confirm_crop_title')}
                 </h2>
 
                 {/* SUMMARY RIBBON */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-6 text-xs">
                   <div>
-                    <span className="text-gray-500 block">Selected Mandi:</span>
+                    <span className="text-gray-500 block">{t('sb_selected_mandi')}:</span>
                     <span className="font-bold text-gray-900">{selectedCentre?.name}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500 block">Shift Timing:</span>
+                    <span className="text-gray-500 block">{t('gp_shift')}:</span>
                     <span className="font-bold text-gray-900">{selectedDate} ({selectedSlot?.slot_name})</span>
                   </div>
                   <div>
-                    <span className="text-gray-500 block">Remaining Quota:</span>
-                    <span className="font-bold text-emerald-800">{remainingSlotCap} Quintals Available</span>
+                    <span className="text-gray-500 block">{t('sb_rem_quota')}</span>
+                    <span className="font-bold text-emerald-800">{remainingSlotCap} {t('sb_quintals')} {t('sb_available')}</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Crop Selection */}
                   <div>
-                    <label className="block text-xs font-bold text-gray-800 mb-2">Select Commodity / Crop Type:</label>
+                    <label className="block text-xs font-bold text-gray-800 mb-2">{t('sb_select_crop')}</label>
                     <div className="space-y-2">
                       {CROPS.map((crop) => (
                         <div
@@ -1434,7 +1890,7 @@ export default function SlotBooking() {
                         >
                           <div className="flex items-center gap-2">
                             <span className="text-base">📦</span>
-                            <span className="text-xs text-gray-900">{crop.name}</span>
+                            <span className="text-xs text-gray-900">{t(crop.key) || crop.name}</span>
                           </div>
                           <span className="text-xs font-extrabold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
                             MSP ₹{crop.msp.toLocaleString('en-IN')}/Q
@@ -1448,9 +1904,9 @@ export default function SlotBooking() {
                   <div className="flex flex-col justify-between space-y-4">
                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
                       <label className="block text-xs font-bold text-gray-800 mb-1">
-                        Estimated Grain Load to Deliver (Quintals):
+                        {t('sb_est_load_label')}
                       </label>
-                      <p className="text-2xs text-gray-500 mb-3">1 Quintal = 100 kg. Minimum load 1 Q.</p>
+                      <p className="text-2xs text-gray-500 mb-3">{t('sb_quintal_note')}</p>
 
                       <div className="relative">
                         <input
@@ -1462,7 +1918,7 @@ export default function SlotBooking() {
                           className="w-full pl-4 pr-16 py-3 border-2 border-emerald-300 rounded-xl focus:border-brand focus:outline-none font-bold text-lg text-emerald-950"
                           placeholder="Enter Quantity"
                         />
-                        <span className="absolute right-4 top-3.5 text-xs font-bold text-gray-400">Quintals</span>
+                        <span className="absolute right-4 top-3.5 text-xs font-bold text-gray-400">{t('sb_quintals')}</span>
                       </div>
 
                       {/* Quick Weight Chips */}
@@ -1491,23 +1947,23 @@ export default function SlotBooking() {
                     {/* Financial Estimator Card */}
                     <div className="p-4 bg-gradient-to-br from-emerald-900 to-teal-950 text-white rounded-xl shadow-inner space-y-2">
                       <div className="flex justify-between items-center text-xs text-emerald-200">
-                        <span>Guaranteed MSP Base Rate:</span>
+                        <span>{t('sb_msp_rate_label')}</span>
                         <span className="font-mono font-bold">₹{selectedCrop.msp}/Quintal</span>
                       </div>
                       <div className="flex justify-between items-center text-xs text-emerald-200">
-                        <span>Estimated Load:</span>
-                        <span className="font-mono font-bold">{weightQuintals || 0} Quintals</span>
+                        <span>{t('sb_est_load')}</span>
+                        <span className="font-mono font-bold">{weightQuintals || 0} {t('sb_quintals')}</span>
                       </div>
                       <div className="pt-2 border-t border-emerald-800 flex justify-between items-center">
                         <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                          Estimated Direct MSP Payout:
+                          {t('sb_est_payout')}
                         </span>
                         <span className="text-xl font-extrabold text-yellow-300">
                           ₹{estimatedPayout.toLocaleString('en-IN')}
                         </span>
                       </div>
                       <p className="text-3xs text-emerald-300/80 italic mt-1">
-                        *Subject to FAQ moisture assay & weighbridge verification at Mandi.
+                        {t('sb_msp_disclaimer')}
                       </p>
                     </div>
                   </div>
@@ -1520,7 +1976,7 @@ export default function SlotBooking() {
                     onClick={() => setCurrentStep(2)}
                     className="px-5 py-3 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
                   >
-                    ← Back to Shift Selection
+                    {t('sb_back_shift')}
                   </button>
 
                   <button
@@ -1532,12 +1988,12 @@ export default function SlotBooking() {
                     {isSubmitting ? (
                       <>
                         <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Securing Slot & Generating Pass...</span>
+                        <span>{t('sb_submitting')}</span>
                       </>
                     ) : (
                       <>
                         <span>🎫</span>
-                        <span>Confirm Slot & Generate Digital Gate Pass</span>
+                        <span>{t('sb_confirm_btn')}</span>
                       </>
                     )}
                   </button>
@@ -1565,13 +2021,13 @@ export default function SlotBooking() {
                   <div className="text-left">
                     <h2 className="text-xl font-extrabold text-emerald-950 tracking-tight">AnnaSetu National Grain Procurement</h2>
                     <p className="text-2xs text-emerald-800 font-bold uppercase tracking-widest">
-                      Ministry of Consumer Affairs, Food & Public Distribution
+                      {t('sb_ministry')}
                     </p>
                   </div>
                 </div>
 
                 <div className="inline-block bg-emerald-800 text-white px-4 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider mt-1">
-                  OFFICIAL DIGITAL GATE PASS
+                  {t('sb_official_pass')}
                 </div>
               </div>
 
@@ -1579,7 +2035,7 @@ export default function SlotBooking() {
               <div className="my-5 p-4 bg-emerald-900 text-white rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-md">
                 <div>
                   <span className="text-2xs font-extrabold text-emerald-300 uppercase tracking-widest block">
-                    ISSUED TOKEN IDENTIFIER
+                    {t('sb_issued_token')}
                   </span>
                   <span className="font-mono text-2xl sm:text-3xl font-extrabold tracking-wider text-yellow-300">
                     {activePassModal.token_id}
@@ -1589,7 +2045,7 @@ export default function SlotBooking() {
                   <span className="px-3 py-1 bg-emerald-500/80 rounded-lg text-xs font-bold uppercase tracking-wider">
                     ● {activePassModal.status || 'CONFIRMED'}
                   </span>
-                  <p className="text-2xs text-emerald-200 mt-1">Verified Gate-In Pass</p>
+                  <p className="text-2xs text-emerald-200 mt-1">{t('sb_verified_gate_in')}</p>
                 </div>
               </div>
 
@@ -1606,7 +2062,7 @@ export default function SlotBooking() {
                     bgColor="#ffffff"
                   />
                   <span className="text-3xs text-gray-500 mt-2 font-mono text-center">
-                    Scan for Mandi Gate-In Check
+                    {t('sb_scan_note')}
                   </span>
                 </div>
 
@@ -1614,11 +2070,11 @@ export default function SlotBooking() {
                 <div className="sm:col-span-2 space-y-3 text-xs">
                   <div className="grid grid-cols-2 gap-2 pb-2 border-b border-gray-100">
                     <div>
-                      <span className="text-gray-400 block text-2xs">Farmer Name:</span>
+                      <span className="text-gray-400 block text-2xs">{t('sb_pass_farmer')}</span>
                       <span className="font-bold text-gray-900">{activePassModal.farmer_name}</span>
                     </div>
                     <div>
-                      <span className="text-gray-400 block text-2xs">Aadhaar:</span>
+                      <span className="text-gray-400 block text-2xs">{t('sb_pass_aadhar')}</span>
                       <span className="font-mono font-semibold text-gray-800">
                         XXXX-XXXX-{activePassModal.farmer_aadhar?.slice(-4) || '7890'}
                       </span>
@@ -1627,35 +2083,35 @@ export default function SlotBooking() {
 
                   <div className="grid grid-cols-2 gap-2 pb-2 border-b border-gray-100">
                     <div>
-                      <span className="text-gray-400 block text-2xs">Procurement Centre:</span>
+                      <span className="text-gray-400 block text-2xs">{t('sb_pass_mandi')}</span>
                       <span className="font-bold text-emerald-900">{activePassModal.centre_name}</span>
                     </div>
                     <div>
-                      <span className="text-gray-400 block text-2xs">Scheduled Date:</span>
+                      <span className="text-gray-400 block text-2xs">{t('sb_pass_date')}</span>
                       <span className="font-bold text-gray-900">{activePassModal.booking_date}</span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 pb-2 border-b border-gray-100">
                     <div>
-                      <span className="text-gray-400 block text-2xs">Intake Shift:</span>
+                      <span className="text-gray-400 block text-2xs">{t('sb_pass_shift')}</span>
                       <span className="font-bold text-gray-900">{activePassModal.slot_name}</span>
                     </div>
                     <div>
-                      <span className="text-gray-400 block text-2xs">Commodity / Crop:</span>
-                      <span className="font-bold text-emerald-900">{activePassModal.crop_type}</span>
+                      <span className="text-gray-400 block text-2xs">{t('sb_pass_crop')}</span>
+                      <span className="font-bold text-emerald-900">{getCropDisplayName(activePassModal.crop_type, t)}</span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <span className="text-gray-400 block text-2xs">Allotted Load:</span>
+                      <span className="text-gray-400 block text-2xs">{t('sb_pass_allotted')}</span>
                       <span className="font-extrabold text-emerald-800 text-sm">
-                        {activePassModal.estimated_weight_quintals} Quintals
+                        {activePassModal.estimated_weight_quintals} {t('sb_quintals')}
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-400 block text-2xs">Contact:</span>
+                      <span className="text-gray-400 block text-2xs">{t('sb_pass_contact')}</span>
                       <span className="font-semibold text-gray-800">{activePassModal.farmer_phone}</span>
                     </div>
                   </div>
@@ -1664,10 +2120,10 @@ export default function SlotBooking() {
 
               {/* Instructions Footer */}
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-2xs text-amber-900 space-y-1">
-                <p className="font-bold">⚠️ Gate Reporting & Settlement Instructions:</p>
-                <p>1. Please report at Mandi entry terminal within your designated 3-hour shift window.</p>
-                <p>2. Keep physical Aadhaar card and digital Gate Pass Token ready for Stage 2 Gate Scan.</p>
-                <p className="text-emerald-800 font-medium">💡 Net MSP payout will be credited via Direct Benefit Transfer (DBT) and viewable under the DBT Payments tab upon Stage 5 Mandi completion.</p>
+                <p className="font-bold">{t('sb_inst_title')}</p>
+                <p>{t('sb_inst_1')}</p>
+                <p>{t('sb_inst_2')}</p>
+                <p className="text-emerald-800 font-medium">{t('sb_inst_3')}</p>
               </div>
 
             </div>
@@ -1681,10 +2137,38 @@ export default function SlotBooking() {
                 }}
                 className="text-xs font-bold text-gray-600 hover:text-gray-800 px-4 py-2 cursor-pointer"
               >
-                ✕ Close
+                ✕ {t('close')}
               </button>
 
               <div className="flex flex-wrap gap-2">
+                {activePassModal.status !== 'cancelled' && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const p = activePassModal;
+                        setActivePassModal(null);
+                        handleOpenRescheduleModal(p);
+                      }}
+                      className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>📅</span>
+                      <span>{t('tracker_reschedule_btn', 'Reschedule Slot')}</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const p = activePassModal;
+                        setActivePassModal(null);
+                        handleOpenCancelModal(p);
+                      }}
+                      className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>🚫</span>
+                      <span>{t('tracker_cancel_btn', 'Cancel Gate Pass')}</span>
+                    </button>
+                  </>
+                )}
+
                 <button
                   onClick={() => {
                     const token = activePassModal.token_id;
@@ -1694,7 +2178,7 @@ export default function SlotBooking() {
                   className="bg-brand text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-brand-dark transition-colors shadow flex items-center gap-1.5 cursor-pointer"
                 >
                   <span>🛰️</span>
-                  <span>Track Live Consignment</span>
+                  <span>{t('sb_track_consignment')}</span>
                 </button>
 
                 <button
@@ -1702,7 +2186,7 @@ export default function SlotBooking() {
                   className="bg-emerald-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-emerald-900 transition-colors shadow flex items-center gap-2 cursor-pointer"
                 >
                   <span>🖨️</span>
-                  <span>Print PDF</span>
+                  <span>{t('sb_print_pdf')}</span>
                 </button>
 
                 <button
@@ -1713,7 +2197,7 @@ export default function SlotBooking() {
                   }}
                   className="bg-brand text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-brand-dark transition-colors shadow cursor-pointer"
                 >
-                  View All My Passes
+                  {t('sb_view_all_passes')}
                 </button>
               </div>
             </div>
@@ -1721,6 +2205,12 @@ export default function SlotBooking() {
           </div>
         </div>
       )}
+
+      {/* IN-PLACE RESCHEDULE MODAL */}
+      {renderRescheduleModal()}
+
+      {/* IN-PLACE CANCEL MODAL */}
+      {renderCancelModal()}
 
     </div>
   );

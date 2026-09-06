@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 // The 3 Official Mandi In-Charges
 const AUTH_ACCOUNTS = [
@@ -32,6 +33,7 @@ const AUTH_ACCOUNTS = [
 ];
 
 export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
+  const { t } = useTranslation();
   const [officerId, setOfficerId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -53,7 +55,7 @@ export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
       setPassword('');
       setError('');
     } else {
-      setError('Invalid Manager Credentials. Access Restricted to Mandi In-Charges.');
+      setError(t('admin_err_invalid'));
     }
   };
 
@@ -79,9 +81,9 @@ export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
               style={{ imageRendering: '-webkit-optimize-contrast' }}
             />
           </div>
-          <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight">Mandi Manager Portal</h3>
+          <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight">{t('admin_modal_title')}</h3>
           <p className="text-xs text-emerald-700 font-semibold tracking-wider uppercase mt-1">
-            Department of Food & Public Distribution
+            {t('admin_dept_name')}
           </p>
         </div>
 
@@ -99,12 +101,12 @@ export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1">
-              Manager Username
+              {t('admin_user_label')}
             </label>
             <input 
               type="text" 
               required
-              placeholder="Username"
+              placeholder={t('admin_user_ph')}
               value={officerId}
               onChange={(e) => setOfficerId(e.target.value)}
               className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm font-medium"
@@ -113,12 +115,12 @@ export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
 
           <div>
             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1">
-              Security Password
+              {t('admin_pwd_label')}
             </label>
             <input 
               type="password" 
               required
-              placeholder="Password"
+              placeholder={t('admin_pwd_ph')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm font-medium"
@@ -131,20 +133,20 @@ export default function AdminLoginModal({ isOpen, onClose, onLoginSuccess }) {
               onClick={onClose}
               className="w-1/3 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-lg hover:bg-gray-200 transition-colors text-sm cursor-pointer"
             >
-              Cancel
+              {t('admin_cancel_btn')}
             </button>
             <button 
               type="submit" 
               className="w-2/3 bg-emerald-600 text-white font-bold py-2.5 rounded-lg hover:bg-emerald-700 transition-colors shadow-md text-sm cursor-pointer"
             >
-              Authenticate
+              {t('admin_auth_btn')}
             </button>
           </div>
         </form>
 
         {/* Quick Roles Reference Drawer */}
         <div className="mt-5 pt-3 border-t border-gray-100 text-[11px] text-gray-400 space-y-1">
-          <p className="font-bold text-gray-600">Official Mandi In-Charges:</p>
+          <p className="font-bold text-gray-600">{t('admin_incharges_title')}</p>
           <p>• Meerut (UP): <span className="font-mono text-gray-700 font-bold">vishesh / Meerut@Setu2026</span></p>
           <p>• Ludhiana (PB): <span className="font-mono text-gray-700 font-bold">sarabpreet / Punjab@Setu2026</span></p>
           <p>• Guwahati (AS): <span className="font-mono text-gray-700 font-bold">saishri / Assam@Setu2026</span></p>

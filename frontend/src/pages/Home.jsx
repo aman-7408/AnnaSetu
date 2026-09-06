@@ -1,16 +1,24 @@
 import React from 'react';
 import { useTranslation } from "react-i18next";
-
 import { useNavigate } from 'react-router-dom';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 export default function Home({ farmerSession, onFarmerLoginClick, onFarmerLogout, onAdminClick }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[85vh] py-12 px-4 text-center animate-fade-in">
+    <div className="relative flex flex-col items-center justify-center min-h-[85vh] py-8 px-4 text-center animate-fade-in">
+      
+      {/* Top Right Language Switcher for Public Landing Screen (Mobile & Desktop) */}
+      {!farmerSession && (
+        <div className="absolute top-3 sm:top-5 right-3 sm:right-6 z-30">
+          <LanguageSwitcher />
+        </div>
+      )}
       
       {/* Emblem & Official Seal */}
-      <div className="w-36 h-36 bg-white rounded-full flex items-center justify-center mb-6 border-4 border-brand shadow-2xl p-2 overflow-hidden transform hover:scale-105 transition-transform duration-300">
+      <div className="w-32 h-32 sm:w-36 sm:h-36 bg-white rounded-full flex items-center justify-center mb-6 border-4 border-brand shadow-2xl p-2 overflow-hidden transform hover:scale-105 transition-transform duration-300 mt-4 sm:mt-0">
         <img 
           src="/logo.png" 
           alt="AnnaSetu Official Logo" 
@@ -21,10 +29,10 @@ export default function Home({ farmerSession, onFarmerLoginClick, onFarmerLogout
       
       {/* Platform Title */}
       <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">
-        Welcome to <span className="text-brand">AnnaSetu</span>
+        {t("home_welcome_prefix")}<span className="text-brand">{t("app_title")}</span>{t("home_welcome_suffix")}
       </h1>
       <p className="text-base sm:text-lg text-gray-700 font-medium max-w-2xl mx-auto mb-10 leading-relaxed">
-        India's Direct Digital Grain Procurement & PFMS Direct Benefit Transfer Portal.
+        {t("home_subtitle")}
       </p>
 
       {/* Dynamic State: Authenticated Farmer vs Public 3-Action Gateway */}
@@ -38,7 +46,7 @@ export default function Home({ farmerSession, onFarmerLoginClick, onFarmerLogout
               </div>
               <div>
                 <span className="text-3xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-200/70 px-2.5 py-0.5 rounded-full">
-                  Authenticated Farmer
+                  {t("home_auth_farmer")}
                 </span>
                 <h2 className="text-xl font-extrabold text-emerald-950 mt-0.5">{farmerSession.name}</h2>
                 <p className="text-xs text-gray-600 font-mono">
@@ -50,7 +58,7 @@ export default function Home({ farmerSession, onFarmerLoginClick, onFarmerLogout
               onClick={onFarmerLogout}
               className="text-xs font-bold text-red-600 hover:text-red-800 bg-white hover:bg-red-50 border border-red-200 px-3.5 py-2 rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
             >
-              Logout ↪
+              {t("home_logout")} ↪
             </button>
           </div>
 
@@ -59,14 +67,14 @@ export default function Home({ farmerSession, onFarmerLoginClick, onFarmerLogout
               onClick={() => navigate('/book-slot')}
               className="bg-brand text-white px-8 py-4 rounded-2xl font-extrabold text-base hover:bg-brand-dark transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95 flex-1"
             >
-              <span>⚡ Book a Procurement Slot</span>
+              <span>⚡ {t("home_book_slot")}</span>
               <span>➔</span>
             </button>
             <button 
               onClick={() => navigate('/payments')}
               className="bg-white text-emerald-800 border-2 border-emerald-600 px-8 py-4 rounded-2xl font-extrabold text-base hover:bg-emerald-50 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer flex-1"
             >
-              <span>💳 View DBT Payments</span>
+              <span>💳 {t("home_view_payments")}</span>
             </button>
           </div>
         </div>
@@ -81,7 +89,7 @@ export default function Home({ farmerSession, onFarmerLoginClick, onFarmerLogout
               className="bg-brand hover:bg-brand-dark text-white px-6 py-4 rounded-2xl font-extrabold text-base transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2.5 cursor-pointer active:scale-95 border-2 border-emerald-600"
             >
               <span>🌱</span>
-              <span>Register as New Farmer</span>
+              <span>{t("home_reg_btn")}</span>
             </button>
 
             <button 
@@ -89,7 +97,7 @@ export default function Home({ farmerSession, onFarmerLoginClick, onFarmerLogout
               className="bg-white hover:bg-emerald-50/80 text-emerald-900 border-2 border-emerald-600 px-6 py-4 rounded-2xl font-extrabold text-base transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2.5 cursor-pointer active:scale-95"
             >
               <span>🧑‍🌾</span>
-              <span>Farmer Login</span>
+              <span>{t("home_login_btn")}</span>
             </button>
           </div>
 
@@ -100,7 +108,7 @@ export default function Home({ farmerSession, onFarmerLoginClick, onFarmerLogout
             </div>
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-gray-50 px-3 font-extrabold text-gray-600 tracking-wider">
-                Official Administration
+                {t("home_official_admin")}
               </span>
             </div>
           </div>
@@ -116,22 +124,22 @@ export default function Home({ farmerSession, onFarmerLoginClick, onFarmerLogout
               </div>
               <div>
                 <h3 className="text-sm font-extrabold text-gray-900 tracking-wide group-hover:text-emerald-900">
-                  Mandi Manager Portal
+                  {t("home_admin_btn")}
                 </h3>
                 <p className="text-2xs text-gray-500 font-medium">
-                  Official Mandi In-Charge Console & Intake Stations
+                  {t("home_admin_desc")}
                 </p>
               </div>
             </div>
             <span className="text-emerald-700 font-extrabold text-xs group-hover:translate-x-1 transition-transform pr-1">
-              Enter Portal ➔
+              {t("home_enter_portal_btn")}
             </span>
           </button>
 
           {/* Trust & Security Badge */}
           <div className="pt-6 flex items-center justify-center gap-2 text-2xs text-gray-600 font-semibold">
             <span>🛡️</span>
-            <span>Verified by UIDAI Aadhaar KYC & PFMS National Treasury System</span>
+            <span>{t("home_trust_badge")}</span>
           </div>
 
         </div>

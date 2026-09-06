@@ -21,6 +21,7 @@ const procurementSchema = new mongoose.Schema({
 
   // Stage 3: Quality Check
   moisture_percent: { type: Number, default: 0 },
+  purity_percent: { type: Number, default: 0 },
   grade: { type: String, default: '' },
   assayed_at: { type: Date },
 
@@ -35,14 +36,25 @@ const procurementSchema = new mongoose.Schema({
   j_form_number: { type: String, default: '' },
   approved_at: { type: Date },
 
-  // Status & Rejection Tracking
-  status: { type: String, default: 'in_progress', enum: ['in_progress', 'completed', 'rejected'] },
+  // Status, Rejection & Cancellation Tracking
+  status: { type: String, default: 'in_progress', enum: ['in_progress', 'completed', 'rejected', 'cancelled'] },
   rejection_stage: { type: Number },
   rejection_reason: { type: String, default: '' },
   rejected_at: { type: Date },
   rejected_by: { type: String, default: 'Mandi Quality Officer' },
 
+  // Cancellation & Rescheduling Tracking
+  cancelled_at: { type: Date },
+  cancellation_reason: { type: String, default: '' },
+  rescheduled_at: { type: Date },
+  reschedule_count: { type: Number, default: 0 },
+
   updated_at: { type: Date, default: Date.now }
 });
+
+// High-performance indexing for Farmer Tracker & Admin Console Dashboards
+procurementSchema.index({ farmer_aadhar: 1, slot_date: -1 });
+procurementSchema.index({ slot_date: -1, status: 1 });
+procurementSchema.index({ status: 1 });
 
 module.exports = mongoose.models.Procurement || mongoose.model('Procurement', procurementSchema);

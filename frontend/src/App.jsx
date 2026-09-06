@@ -1,16 +1,18 @@
-import React, { useState, useEffect, Component } from 'react';
+import React, { useState, useEffect, Component, lazy, Suspense } from 'react';
 import { useTranslation } from "react-i18next";
 
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
-import Registration from './pages/Registration';
-import SlotBooking from './pages/SlotBooking';
-import AdminConsole from './pages/AdminConsole';
 import AdminLoginModal from './components/AdminLoginModal';
 import FarmerLoginModal from './components/FarmerLoginModal';
-import ProcurementTracker from './pages/ProcurementTracker';
-import Notifications from './pages/Notifications';
-import PaymentStatus from './pages/PaymentStatus';
+import LanguageSwitcher from './components/LanguageSwitcher';
+
+const Registration = lazy(() => import('./pages/Registration'));
+const SlotBooking = lazy(() => import('./pages/SlotBooking'));
+const AdminConsole = lazy(() => import('./pages/AdminConsole'));
+const ProcurementTracker = lazy(() => import('./pages/ProcurementTracker'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const PaymentStatus = lazy(() => import('./pages/PaymentStatus'));
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -60,6 +62,7 @@ class ErrorBoundary extends Component {
 }
 
 function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLoginClick, onFarmerLogout }) {
+  const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const isManagerLoggedIn = !!userSession;
@@ -112,86 +115,90 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
             />
           </div>
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight leading-none">AnnaSetu</h1>
-            <span className="text-[10px] text-emerald-200 font-bold uppercase tracking-wider block">Kisan Logistics</span>
+            <h1 className="text-2xl font-extrabold tracking-tight leading-none">{t("app_title")}</h1>
+            <span className="text-[10px] text-emerald-200 font-bold uppercase tracking-wider block">{t("nav_sub_title")}</span>
           </div>
         </Link>
         
-        {/* Navigation Links */}
-        <ul className="hidden md:flex space-x-5 text-sm font-medium items-center">
-          {isFarmerLoggedIn ? (
-            /* === 1. LOGGED IN KISAN NAVBAR === */
-            <>
-              <li><Link to="/book-slot" className="cursor-pointer hover:text-green-200 transition-colors font-medium">Book Slot</Link></li>
-              <li><Link to="/tracker" className="cursor-pointer hover:text-green-200 transition-colors font-medium">Tracker</Link></li>
-              <li><Link to="/payments" className="cursor-pointer hover:text-green-200 transition-colors font-medium">DBT Payments</Link></li>
-              <li>
-                <Link to="/notifications" className="cursor-pointer hover:text-green-200 transition-colors flex items-center gap-1.5 font-medium">
-                  <span>Notifications</span>
-                  {unreadCount > 0 && (
-                    <span className="bg-red-500 text-white text-[11px] font-black px-2 py-0.5 rounded-full shadow-sm animate-pulse">
-                      {unreadCount}
+        {/* Right Action Cluster: Nav Links + Language Switcher */}
+        <div className="hidden md:flex items-center gap-4">
+          <ul className="flex space-x-5 text-sm font-medium items-center">
+            {isFarmerLoggedIn ? (
+              /* === 1. LOGGED IN KISAN NAVBAR === */
+              <>
+                <li><Link to="/book-slot" className="cursor-pointer hover:text-green-200 transition-colors font-medium">{t("nav_book_slot")}</Link></li>
+                <li><Link to="/tracker" className="cursor-pointer hover:text-green-200 transition-colors font-medium">{t("nav_tracker")}</Link></li>
+                <li><Link to="/payments" className="cursor-pointer hover:text-green-200 transition-colors font-medium">{t("nav_payments")}</Link></li>
+                <li>
+                  <Link to="/notifications" className="cursor-pointer hover:text-green-200 transition-colors flex items-center gap-1.5 font-medium">
+                    <span>{t("nav_notifications")}</span>
+                    {unreadCount > 0 && (
+                      <span className="bg-red-500 text-white text-[11px] font-black px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+                <li>
+                  <div className="flex items-center gap-2 bg-emerald-900/90 border border-emerald-400/60 rounded-xl px-3 py-1.5 text-xs shadow-inner">
+                    <span className="font-extrabold text-emerald-200 flex items-center gap-1">
+                      <span>🧑‍🌾</span> {farmerSession?.name ? farmerSession.name.split(' ')[0] : t("nav_kisan")}
                     </span>
-                  )}
-                </Link>
-              </li>
+                    <button
+                      onClick={onFarmerLogout}
+                      title="Logout Farmer Account"
+                      className="text-red-300 hover:text-red-100 font-bold text-3xs bg-red-950/60 hover:bg-red-900 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                    >
+                      {t("nav_logout")}
+                    </button>
+                  </div>
+                </li>
+              </>
+            ) : isManagerLoggedIn ? (
+              /* === 2. LOGGED IN MANDI MANAGER NAVBAR (ONLY MANAGER NAME) === */
               <li>
-                <div className="flex items-center gap-2 bg-emerald-900/90 border border-emerald-400/60 rounded-xl px-3 py-1.5 text-xs shadow-inner">
-                  <span className="font-extrabold text-emerald-200 flex items-center gap-1">
-                    <span>🧑‍🌾</span> {farmerSession?.name ? farmerSession.name.split(' ')[0] : 'Kisan'}
+                <div className="flex items-center gap-2 bg-emerald-950 border border-emerald-500/80 rounded-xl px-3.5 py-1.5 text-xs shadow-md">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="font-extrabold text-emerald-200">
+                    {userSession?.name || 'Manager'}
                   </span>
-                  <button
-                    onClick={onFarmerLogout}
-                    title="Logout Farmer Account"
-                    className="text-red-300 hover:text-red-100 font-bold text-3xs bg-red-950/60 hover:bg-red-900 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
-                  >
-                    Logout
-                  </button>
                 </div>
               </li>
-            </>
-          ) : isManagerLoggedIn ? (
-            /* === 2. LOGGED IN MANDI MANAGER NAVBAR (ONLY MANAGER NAME) === */
-            <li>
-              <div className="flex items-center gap-2 bg-emerald-950 border border-emerald-500/80 rounded-xl px-3.5 py-1.5 text-xs shadow-md">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="font-extrabold text-emerald-200">
-                  {userSession?.name || 'Manager'}
-                </span>
-              </div>
-            </li>
-          ) : (
-            /* === 3. PUBLIC GUEST NAVBAR === */
-            <>
-              <li>
-                <Link to="/register" className="cursor-pointer hover:text-green-200 transition-colors font-bold">
-                  Register
-                </Link>
-              </li>
-              <li>
-                <button
-                  onClick={onFarmerLoginClick}
-                  className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer border border-emerald-500/50 active:scale-95"
-                >
-                  <span>🧑‍🌾</span>
-                  <span>Farmer Login</span>
-                </button>
-              </li>
-              <li>
-                <button 
-                  onClick={onAdminClick}
-                  className="bg-brand-dark text-white hover:bg-emerald-700 border border-green-700 flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer"
-                >
-                  <span>🔒</span>
-                  <span>Manager Portal</span>
-                </button>
-              </li>
-            </>
-          )}
-        </ul>
+            ) : (
+              /* === 3. PUBLIC GUEST NAVBAR === */
+              <>
+                <li>
+                  <Link to="/register" className="cursor-pointer hover:text-green-200 transition-colors font-bold">
+                    {t("nav_register")}
+                  </Link>
+                </li>
+                <li>
+                  <button
+                    onClick={onFarmerLoginClick}
+                    className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer border border-emerald-500/50 active:scale-95"
+                  >
+                    <span>🧑‍🌾</span>
+                    <span>{t("nav_farmer_login")}</span>
+                  </button>
+                </li>
+                <li>
+                  <button 
+                    onClick={onAdminClick}
+                    className="bg-brand-dark text-white hover:bg-emerald-700 border border-green-700 flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                  >
+                    <span>🔒</span>
+                    <span>{t("nav_manager_portal")}</span>
+                  </button>
+                </li>
+              </>
+            )}
+          </ul>
+          <LanguageSwitcher />
+        </div>
 
         {/* Mobile Right Header: Instant Bell + Hamburger */}
         <div className="md:hidden flex items-center gap-2">
+          <LanguageSwitcher />
           {isFarmerLoggedIn && (
             <Link 
               to="/notifications" 
@@ -225,23 +232,23 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
             {isFarmerLoggedIn ? (
               /* === MOBILE: FARMER === */
               <>
-                <Link to="/book-slot" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>⚡ Book Slot</Link>
-                <Link to="/tracker" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>🛰️ Tracker</Link>
-                <Link to="/payments" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>💰 DBT Payments</Link>
+                <Link to="/book-slot" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>⚡ {t("nav_book_slot")}</Link>
+                <Link to="/tracker" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>🛰️ {t("nav_tracker")}</Link>
+                <Link to="/payments" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>💰 {t("nav_payments")}</Link>
                 <Link to="/notifications" className="block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-white flex items-center justify-between" onClick={() => setIsMenuOpen(false)}>
                   <span className="flex items-center gap-2">
                     <span>🔔</span>
-                    <span>Notifications</span>
+                    <span>{t("nav_notifications")}</span>
                   </span>
                   {unreadCount > 0 && (
                     <span className="bg-red-500 text-white text-xs font-black px-2.5 py-0.5 rounded-full shadow-sm animate-pulse">
-                      {unreadCount} New
+                      {unreadCount} {t("nav_new_count")}
                     </span>
                   )}
                 </Link>
                 <div className="flex items-center justify-between px-3 py-2.5 bg-emerald-900/90 rounded-xl border border-emerald-600/40 mt-1">
-                  <span className="text-xs font-extrabold text-emerald-100">🧑‍🌾 {farmerSession?.name || 'Kisan'}</span>
-                  <button onClick={() => { setIsMenuOpen(false); onFarmerLogout(); }} className="text-xs font-bold text-red-300 hover:text-red-100 bg-red-950/80 px-2 py-1 rounded-md">Logout</button>
+                  <span className="text-xs font-extrabold text-emerald-100">🧑‍🌾 {farmerSession?.name || t("nav_kisan")}</span>
+                  <button onClick={() => { setIsMenuOpen(false); onFarmerLogout(); }} className="text-xs font-bold text-red-300 hover:text-red-100 bg-red-950/80 px-2 py-1 rounded-md">{t("nav_logout")}</button>
                 </div>
               </>
             ) : isManagerLoggedIn ? (
@@ -253,18 +260,18 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
             ) : (
               /* === MOBILE: PUBLIC GUEST === */
               <>
-                <Link to="/register" className="block px-3 py-2.5 rounded-xl text-base font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>🌱 Register as Farmer</Link>
+                <Link to="/register" className="block px-3 py-2.5 rounded-xl text-base font-bold hover:bg-brand transition-colors cursor-pointer text-white" onClick={() => setIsMenuOpen(false)}>🌱 {t("nav_register")}</Link>
                 <button 
                   onClick={() => { setIsMenuOpen(false); onFarmerLoginClick(); }}
                   className="w-full text-left block px-3 py-2.5 rounded-xl text-base font-extrabold hover:bg-brand transition-colors cursor-pointer text-emerald-200"
                 >
-                  🧑‍🌾 Farmer Login
+                  🧑‍🌾 {t("nav_farmer_login")}
                 </button>
                 <button 
                   onClick={() => { setIsMenuOpen(false); onAdminClick(); }}
                   className="w-full text-left block px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-brand transition-colors cursor-pointer text-yellow-300 border-t border-emerald-800/80 pt-3 mt-2 flex items-center gap-2"
                 >
-                  🔒 Mandi Manager Portal
+                  🔒 {t("nav_manager_portal")}
                 </button>
               </>
             )}
@@ -277,6 +284,7 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
 
 // Protected Route Barrier for Private Farmer Features
 function FarmerAuthGate({ farmerSession, onFarmerLoginClick, children }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   if (!farmerSession) {
     return (
@@ -285,9 +293,9 @@ function FarmerAuthGate({ farmerSession, onFarmerLoginClick, children }) {
           🔒
         </div>
         <div className="space-y-2">
-          <h2 className="text-2xl font-extrabold text-gray-900">Farmer Authentication Required</h2>
+          <h2 className="text-2xl font-extrabold text-gray-900">{t("auth_gate_title")}</h2>
           <p className="text-sm text-gray-600 max-w-md mx-auto leading-relaxed">
-            Please sign in with your registered 12-digit Aadhaar & OTP to access your personal procurement passes, live consignment tracker, and DBT payouts.
+            {t("auth_gate_desc")}
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
@@ -296,13 +304,13 @@ function FarmerAuthGate({ farmerSession, onFarmerLoginClick, children }) {
             className="bg-brand hover:bg-brand-dark text-white font-extrabold px-6 py-3 rounded-xl text-sm transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-2"
           >
             <span>🧑‍🌾</span>
-            <span>Farmer Login</span>
+            <span>{t("auth_gate_login")}</span>
           </button>
           <button
             onClick={() => navigate('/register')}
             className="bg-white hover:bg-emerald-50 text-emerald-800 border-2 border-emerald-600 font-bold px-6 py-3 rounded-xl text-sm transition-all shadow-sm cursor-pointer"
           >
-            Register as New Farmer
+            {t("auth_gate_register")}
           </button>
         </div>
       </div>
@@ -311,12 +319,28 @@ function FarmerAuthGate({ farmerSession, onFarmerLoginClick, children }) {
   return children;
 }
 
+function PageLoader() {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+      <div className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-4" />
+      <p className="text-xs font-semibold text-emerald-800 tracking-wide">Loading portal...</p>
+    </div>
+  );
+}
+
 function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Manager Session State
-  const [userSession, setUserSession] = useState(null);
+  // Manager Persistent Session State
+  const [userSession, setUserSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem('manager_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [showAdminModal, setShowAdminModal] = useState(false);
 
   // Farmer Persistent Session State
@@ -337,12 +361,20 @@ function MainLayout() {
   useEffect(() => {
     const handleStorageSync = () => {
       try {
-        const saved = localStorage.getItem('farmer_session');
-        setFarmerSession(saved ? JSON.parse(saved) : null);
+        const savedFarmer = localStorage.getItem('farmer_session');
+        setFarmerSession(savedFarmer ? JSON.parse(savedFarmer) : null);
+        const savedManager = localStorage.getItem('manager_session');
+        setUserSession(savedManager ? JSON.parse(savedManager) : null);
       } catch {}
     };
     window.addEventListener('farmer-session-changed', handleStorageSync);
-    return () => window.removeEventListener('farmer-session-changed', handleStorageSync);
+    window.addEventListener('manager-session-changed', handleStorageSync);
+    window.addEventListener('storage', handleStorageSync);
+    return () => {
+      window.removeEventListener('farmer-session-changed', handleStorageSync);
+      window.removeEventListener('manager-session-changed', handleStorageSync);
+      window.removeEventListener('storage', handleStorageSync);
+    };
   }, []);
 
   // Manager Handlers
@@ -355,13 +387,21 @@ function MainLayout() {
   };
 
   const handleAdminLoginSuccess = (account) => {
+    try {
+      localStorage.setItem('manager_session', JSON.stringify(account));
+    } catch {}
     setUserSession(account);
     setShowAdminModal(false);
+    window.dispatchEvent(new Event('manager-session-changed'));
     navigate('/admin');
   };
 
   const handleAdminLogout = () => {
+    try {
+      localStorage.removeItem('manager_session');
+    } catch {}
     setUserSession(null);
+    window.dispatchEvent(new Event('manager-session-changed'));
     navigate('/');
   };
 
@@ -425,64 +465,66 @@ function MainLayout() {
         
         {/* Main Content Area */}
         <main className="max-w-7xl mx-auto">
-          <Routes>
-            <Route 
-              path="/" 
-              element={
-                <Home 
-                  farmerSession={farmerSession} 
-                  onFarmerLoginClick={handleFarmerLoginClick} 
-                  onFarmerLogout={handleFarmerLogout} 
-                  onAdminClick={handleAdminClick}
-                />
-              } 
-            />
-            <Route path="/register" element={<Registration />} />
-            
-            {/* Protected Farmer Routes */}
-            <Route 
-              path="/book-slot" 
-              element={
-                <FarmerAuthGate farmerSession={farmerSession} onFarmerLoginClick={handleFarmerLoginClick}>
-                  <SlotBooking />
-                </FarmerAuthGate>
-              } 
-            />
-            <Route 
-              path="/tracker" 
-              element={
-                <FarmerAuthGate farmerSession={farmerSession} onFarmerLoginClick={handleFarmerLoginClick}>
-                  <ProcurementTracker />
-                </FarmerAuthGate>
-              } 
-            />
-            <Route 
-              path="/payments" 
-              element={
-                <FarmerAuthGate farmerSession={farmerSession} onFarmerLoginClick={handleFarmerLoginClick}>
-                  <PaymentStatus />
-                </FarmerAuthGate>
-              } 
-            />
-            <Route 
-              path="/notifications" 
-              element={
-                <FarmerAuthGate farmerSession={farmerSession} onFarmerLoginClick={handleFarmerLoginClick}>
-                  <Notifications />
-                </FarmerAuthGate>
-              } 
-            />
-            <Route 
-              path="/admin" 
-              element={
-                <AdminConsole 
-                  userSession={userSession} 
-                  onLogout={handleAdminLogout} 
-                  onOpenLogin={() => setShowAdminModal(true)} 
-                />
-              } 
-            />
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route 
+                path="/" 
+                element={
+                  <Home 
+                    farmerSession={farmerSession} 
+                    onFarmerLoginClick={handleFarmerLoginClick} 
+                    onFarmerLogout={handleFarmerLogout} 
+                    onAdminClick={handleAdminClick}
+                  />
+                } 
+              />
+              <Route path="/register" element={<Registration />} />
+              
+              {/* Protected Farmer Routes */}
+              <Route 
+                path="/book-slot" 
+                element={
+                  <FarmerAuthGate farmerSession={farmerSession} onFarmerLoginClick={handleFarmerLoginClick}>
+                    <SlotBooking />
+                  </FarmerAuthGate>
+                } 
+              />
+              <Route 
+                path="/tracker" 
+                element={
+                  <FarmerAuthGate farmerSession={farmerSession} onFarmerLoginClick={handleFarmerLoginClick}>
+                    <ProcurementTracker />
+                  </FarmerAuthGate>
+                } 
+              />
+              <Route 
+                path="/payments" 
+                element={
+                  <FarmerAuthGate farmerSession={farmerSession} onFarmerLoginClick={handleFarmerLoginClick}>
+                    <PaymentStatus />
+                  </FarmerAuthGate>
+                } 
+              />
+              <Route 
+                path="/notifications" 
+                element={
+                  <FarmerAuthGate farmerSession={farmerSession} onFarmerLoginClick={handleFarmerLoginClick}>
+                    <Notifications />
+                  </FarmerAuthGate>
+                } 
+              />
+              <Route 
+                path="/admin" 
+                element={
+                  <AdminConsole 
+                    userSession={userSession} 
+                    onLogout={handleAdminLogout} 
+                    onOpenLogin={() => setShowAdminModal(true)} 
+                  />
+                } 
+              />
+            </Routes>
+          </Suspense>
         </main>
       
       </div>

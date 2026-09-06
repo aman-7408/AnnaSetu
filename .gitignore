@@ -1,16 +1,13 @@
-# Logs
-logs
-*.log
-
 # Dependencies
 node_modules/
 backend/node_modules/
 frontend/node_modules/
 
-# Environment variables (CRITICAL)
+# Environment & Secrets (CRITICAL - NEVER COMMIT)
 .env
 .env.*
 *.env
+*.env.local
 backend/.env
 backend/.env.*
 frontend/.env
@@ -18,5 +15,31 @@ frontend/.env.*
 !backend/.env.example
 !frontend/.env.example
 
-# macOS specific
+# Production & Build Outputs
+dist/
+build/
+frontend/dist/
+frontend/build/
+.vite/
+frontend/.vite/
+
+# Logs & Diagnostics
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor & OS Metadata
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

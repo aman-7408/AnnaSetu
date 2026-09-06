@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function Registration() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   
   const [aadhar, setAadhar] = useState('');
@@ -249,11 +251,11 @@ export default function Registration() {
             </div>
             
             <h3 className={`text-2xl font-extrabold text-gray-900 mb-2 tracking-tight transition-opacity duration-500 delay-[700ms] ${isDrawn ? 'opacity-100' : 'opacity-0'}`}>
-              Registration Complete!
+              {t('reg_complete_title')}
             </h3>
             
             <p className={`text-gray-500 mb-8 font-medium transition-opacity duration-500 delay-[800ms] ${isDrawn ? 'opacity-100' : 'opacity-0'}`}>
-              Your details have been successfully verified.
+              {t('reg_complete_desc')}
             </p>
             
             {/* Action Buttons - Drops in fully animated at the very end */}
@@ -263,13 +265,13 @@ export default function Registration() {
                 className="w-full bg-brand text-white font-bold py-3.5 rounded-xl hover:bg-brand-dark transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm cursor-pointer"
               >
                 <span>⚡</span>
-                <span>Proceed to Slot Booking</span>
+                <span>{t('reg_proceed_booking')}</span>
               </button>
               <button 
                 onClick={() => { setShowSuccessModal(false); navigate('/'); }}
                 className="w-full text-xs font-bold text-gray-500 hover:text-gray-800 py-1.5 cursor-pointer"
               >
-                Go to Home Screen
+                {t('reg_go_home')}
               </button>
             </div>
           </div>
@@ -285,22 +287,22 @@ export default function Registration() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Wait! Are you sure?</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">{t('reg_leave_title')}</h3>
             <p className="text-gray-600 mb-8 font-medium">
-              You need to verify yourself again if you don't complete your registration.
+              {t('reg_leave_desc')}
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
               <button 
                 onClick={() => setShowLeaveModal(false)}
                 className="flex-1 bg-brand text-white font-bold py-3 rounded-lg hover:bg-brand-dark transition-colors shadow-md"
               >
-                Continue Filling
+                {t('reg_leave_continue')}
               </button>
               <button 
                 onClick={handleConfirmLeave}
                 className="flex-1 bg-gray-200 text-gray-700 font-bold py-3 rounded-lg hover:bg-gray-300 transition-colors shadow-md"
               >
-                Go Back Anyway
+                {t('reg_leave_goback')}
               </button>
             </div>
           </div>
@@ -310,7 +312,7 @@ export default function Registration() {
       <div className="py-4 px-3 sm:py-10 sm:px-4 max-w-xl mx-auto">
         <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-8 border-t-4 border-brand">
           
-          <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-4 sm:mb-6 text-center">New Farmer Registration</h2>
+          <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-4 sm:mb-6 text-center">{t('reg_title')}</h2>
           
           {error && (
             <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6 border border-red-200 text-sm font-medium">
@@ -321,7 +323,7 @@ export default function Registration() {
           {formStep === 1 && (
             <div className="space-y-6">
               <div>
-                <label className="block text-gray-700 font-bold mb-2">Aadhar Number (12 Digits)</label>
+                <label className="block text-gray-700 font-bold mb-2">{t('reg_aadhar_label')}</label>
                 <input 
                   type="text" 
                   inputMode="numeric"
@@ -340,7 +342,7 @@ export default function Registration() {
                     disabled={aadhar.length !== 12 || isLoading}
                     className="mt-3 w-full bg-brand text-white font-bold py-3.5 rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-50 cursor-pointer shadow-md"
                   >
-                    {isLoading ? 'Sending...' : 'Send OTP'}
+                    {isLoading ? t('reg_sending_otp') : t('reg_send_otp')}
                   </button>
                 )}
 
@@ -350,10 +352,10 @@ export default function Registration() {
                       ℹ️
                     </div>
                     <h4 className="text-base font-extrabold text-amber-950 mb-1">
-                      Already Registered!
+                      {t('reg_already_reg_title')}
                     </h4>
                     <p className="text-xs text-amber-850 font-medium mb-5 leading-relaxed">
-                      Aadhaar <strong className="font-mono text-gray-900">{aadhar}</strong> is already registered in AnnaSetu under <strong className="text-amber-950">{alreadyRegisteredData.farmer_name || 'Registered Kisan'}</strong>. You do not need to register again.
+                      Aadhaar <strong className="font-mono text-gray-900">{aadhar}</strong> {t('reg_already_reg_desc')} <strong className="text-amber-950">{alreadyRegisteredData.farmer_name || 'Registered Kisan'}</strong>. {t('reg_already_reg_desc2')}
                     </p>
                     <div className="space-y-2">
                       <button
@@ -362,14 +364,14 @@ export default function Registration() {
                         className="w-full bg-brand text-white font-bold py-3 rounded-xl hover:bg-brand-dark transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 text-xs sm:text-sm"
                       >
                         <span>⚡</span>
-                        <span>Proceed to Slot Booking</span>
+                        <span>{t('reg_proceed_booking')}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => navigate('/')}
                         className="w-full bg-white text-gray-700 border border-gray-300 font-bold py-2.5 rounded-xl hover:bg-gray-50 transition-all text-xs cursor-pointer"
                       >
-                        Go to Home Screen
+                        {t('reg_go_home')}
                       </button>
                       <button
                         type="button"
@@ -379,7 +381,7 @@ export default function Registration() {
                         }}
                         className="w-full text-xs font-bold text-gray-500 hover:text-gray-800 py-1 cursor-pointer"
                       >
-                        ← Enter Different Aadhaar
+                        {t('reg_diff_aadhar')}
                       </button>
                     </div>
                   </div>
@@ -388,7 +390,7 @@ export default function Registration() {
 
               {otpSent && (
                 <div className="animate-fade-in-down border-t pt-4">
-                  <label className="block text-gray-700 font-bold mb-4 text-center">Enter 6-Digit OTP</label>
+                  <label className="block text-gray-700 font-bold mb-4 text-center">{t('reg_otp_label')}</label>
                   
                   <div className="relative w-full flex justify-center mb-4">
                     <input 
@@ -418,7 +420,7 @@ export default function Registration() {
                     </div>
                   </div>
 
-                  {otpVerified && <p className="text-green-600 text-sm mt-4 font-bold text-center">✓ Aadhar Verified Successfully</p>}
+                  {otpVerified && <p className="text-green-600 text-sm mt-4 font-bold text-center">✓ {t('reg_verified_badge')}</p>}
                 </div>
               )}
 
@@ -432,12 +434,12 @@ export default function Registration() {
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
                 >
-                  Fill Registration Form
+                  {t('reg_fill_form_btn')}
                 </button>
               )}
               
               <div className="mt-5 pt-3 border-t border-gray-100 text-center text-[11px] text-gray-400 space-y-1">
-                <p className="font-bold text-gray-500">Test Aadhaar Numbers (OTP: 123456):</p>
+                <p className="font-bold text-gray-500">{t('reg_test_note')}</p>
                 <p>• <span className="font-mono font-bold text-gray-700">111122223333</span> — Aman Kumar (Bihar)</p>
                 <p>• <span className="font-mono font-bold text-gray-700">222233334444</span> — Anusrita Deb (Tripura)</p>
                 <p>• <span className="font-mono font-bold text-gray-700">333344445555</span> — Anurag Ojha (UP)</p>
@@ -448,21 +450,21 @@ export default function Registration() {
           {formStep === 2 && (
             <form onSubmit={handleFinalSubmit} className="space-y-5 animate-fade-in-up">
               <div className="bg-green-50 p-4 rounded-lg border border-green-200 mb-6 shadow-inner">
-                <p className="text-xs text-green-800 font-bold mb-2 uppercase tracking-wide border-b border-green-200 pb-2">Aadhar Verified Data</p>
+                <p className="text-xs text-green-800 font-bold mb-2 uppercase tracking-wide border-b border-green-200 pb-2">{t('reg_aadhar_verified_box')}</p>
                 <div className="grid grid-cols-2 gap-3 text-sm text-gray-900 mt-2">
-                  <p><span className="font-semibold text-gray-600 text-xs uppercase">Name</span><br/><span className="text-base font-bold">{formData.name}</span></p>
-                  <p><span className="font-semibold text-gray-600 text-xs uppercase">Gender</span><br/><span className="text-base font-bold">{formData.gender}</span></p>
-                  <p><span className="font-semibold text-gray-600 text-xs uppercase">Phone</span><br/><span className="text-base font-bold">+91 {formData.phone}</span></p>
-                  <p className="col-span-2"><span className="font-semibold text-gray-600 text-xs uppercase">Address</span><br/><span className="text-base font-bold">{formData.address}</span></p>
+                  <p><span className="font-semibold text-gray-600 text-xs uppercase">{t('reg_name')}</span><br/><span className="text-base font-bold">{formData.name}</span></p>
+                  <p><span className="font-semibold text-gray-600 text-xs uppercase">{t('reg_gender')}</span><br/><span className="text-base font-bold">{formData.gender}</span></p>
+                  <p><span className="font-semibold text-gray-600 text-xs uppercase">{t('reg_phone')}</span><br/><span className="text-base font-bold">+91 {formData.phone}</span></p>
+                  <p className="col-span-2"><span className="font-semibold text-gray-600 text-xs uppercase">{t('reg_address')}</span><br/><span className="text-base font-bold">{formData.address}</span></p>
                 </div>
               </div>
 
               <div className="border-t pt-4 mt-2">
-                <h3 className="font-bold text-gray-800 mb-4">Land Details</h3>
+                <h3 className="font-bold text-gray-800 mb-4">{t('reg_land_details_sec')}</h3>
                 
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-gray-700 font-bold mb-2 text-sm">Land Size (Acres)</label>
+                    <label className="block text-gray-700 font-bold mb-2 text-sm">{t('reg_land_size')}</label>
                     <input 
                       required
                       type="number"
@@ -475,7 +477,7 @@ export default function Registration() {
                     />
                   </div>
                   <div>
-                    <label className="block text-gray-700 font-bold mb-2 text-sm">Plot Number</label>
+                    <label className="block text-gray-700 font-bold mb-2 text-sm">{t('reg_plot_no')}</label>
                     <input 
                       required
                       type="text" 
@@ -488,7 +490,7 @@ export default function Registration() {
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-bold mb-2 text-sm">Address of the Land</label>
+                  <label className="block text-gray-700 font-bold mb-2 text-sm">{t('reg_land_addr')}</label>
                   <input 
                     required
                     type="text" 
@@ -501,10 +503,10 @@ export default function Registration() {
               </div>
 
               <div className="border-t pt-4 mt-4">
-                <h3 className="font-bold text-gray-800 mb-4">Direct Benefit Transfer (DBT) Bank Details</h3>
+                <h3 className="font-bold text-gray-800 mb-4">{t('reg_dbt_bank_sec')}</h3>
                 
                 <div className="mb-4">
-                  <label className="block text-gray-700 font-bold mb-2 text-sm">Bank Account Number</label>
+                  <label className="block text-gray-700 font-bold mb-2 text-sm">{t('reg_bank_acc')}</label>
                   <input 
                     required
                     type="text" 
@@ -514,11 +516,11 @@ export default function Registration() {
                     value={formData.bank_account_number}
                     onChange={(e) => setFormData({...formData, bank_account_number: e.target.value})}
                   />
-                  <p className="text-xs text-gray-500 mt-1">Must match the exact account linked to your Aadhar.</p>
+                  <p className="text-xs text-gray-500 mt-1">{t('reg_bank_note')}</p>
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-bold mb-2 text-sm">Bank IFSC Code</label>
+                  <label className="block text-gray-700 font-bold mb-2 text-sm">{t('reg_bank_ifsc')}</label>
                   <input 
                     required
                     type="text" 
@@ -534,13 +536,13 @@ export default function Registration() {
               <button 
                 type="submit"
                 disabled={isLoading}
-                className="mt-6 w-full bg-brand text-white font-bold py-4 rounded-lg hover:bg-brand-dark transition-colors shadow-lg disabled:opacity-50"
+                className="mt-6 w-full bg-brand text-white font-bold py-4 rounded-lg hover:bg-brand-dark transition-colors shadow-lg disabled:opacity-50 cursor-pointer"
               >
-                {isLoading ? 'Processing...' : 'Complete Registration'}
+                {isLoading ? t('reg_submitting') : t('reg_submit')}
               </button>
               
               <div className="mt-5 pt-3 border-t border-gray-100 text-center text-[11px] text-gray-400 space-y-1">
-                <p className="font-bold text-gray-500">Test Linked Bank Details (By Farmer):</p>
+                <p className="font-bold text-gray-500">{t('reg_test_bank_note')}</p>
                 <p>• <strong>Aman Kumar:</strong> A/C <span className="font-mono font-bold text-gray-700">000012345678</span> • IFSC <span className="font-mono font-bold text-gray-700">SBIN0001234</span></p>
                 <p>• <strong>Anusrita Deb:</strong> A/C <span className="font-mono font-bold text-gray-700">100023456789</span> • IFSC <span className="font-mono font-bold text-gray-700">SBIN0000017</span></p>
                 <p>• <strong>Anurag Ojha:</strong> A/C <span className="font-mono font-bold text-gray-700">200034567890</span> • IFSC <span className="font-mono font-bold text-gray-700">PUNB0024500</span></p>
