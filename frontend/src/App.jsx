@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import AdminLoginModal from './components/AdminLoginModal';
 import FarmerLoginModal from './components/FarmerLoginModal';
 import LanguageSwitcher from './components/LanguageSwitcher';
+import InstallPwaBanner from './components/InstallPwaBanner';
 
 const Registration = lazy(() => import('./pages/Registration'));
 const SlotBooking = lazy(() => import('./pages/SlotBooking'));
@@ -429,6 +430,9 @@ function MainLayout() {
   return (
     <div className="relative min-h-screen bg-gray-50 font-sans">
       
+      {/* PWA Install Trigger & Offline Network Monitor */}
+      <InstallPwaBanner />
+
       {/* Manager Login Modal */}
       <AdminLoginModal 
         isOpen={showAdminModal} 

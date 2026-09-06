@@ -1,0 +1,58 @@
+{
+  "name": "AnnaSetu — National Grain Logistics & Procurement",
+  "short_name": "AnnaSetu",
+  "description": "Official Government MSP Procurement, Slot Booking, Digital Gate Passes & Direct Benefit Transfer for Indian Farmers.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#064e3b",
+  "theme_color": "#065f46",
+  "categories": ["government", "productivity", "utilities", "business"],
+  "lang": "hi-IN",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Book Mandi Slot",
+      "short_name": "Book Slot",
+      "description": "Book a guaranteed 3-hour intake shift at nearby Mandis",
+      "url": "/book-slot",
+      "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Live Consignment Tracker",
+      "short_name": "Tracker",
+      "description": "Track live progress across physical Mandi intake stations",
+      "url": "/tracker",
+      "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "PFMS DBT Payment Status",
+      "short_name": "Payments",
+      "description": "Check Direct Benefit Transfer release & download J-Forms",
+      "url": "/payments",
+      "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Mandi Notifications",
+      "short_name": "Alerts",
+      "description": "View verified quality, weighbridge tickets and weather alerts",
+      "url": "/notifications",
+      "icons": [{ "src": "/logo.png", "sizes": "192x192" }]
+    }
+  ]
+}
