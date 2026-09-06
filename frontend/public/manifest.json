@@ -1,9 +1,9 @@
 {
-  "id": "/?source=pwa",
+  "id": "/",
   "name": "AnnaSetu — National Grain Logistics & Procurement",
   "short_name": "AnnaSetu",
   "description": "Official Government MSP Procurement, Slot Booking, Digital Gate Passes & Direct Benefit Transfer for Indian Farmers.",
-  "start_url": "/?source=pwa",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "window-controls-overlay", "minimal-ui"],
