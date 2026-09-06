@@ -283,8 +283,31 @@ router.get('/farmer/:aadhar', async (req, res) => {
       return res.status(400).json({ error: 'Farmer Aadhaar is required.' });
     }
 
-    const bookings = await Booking.find({ farmer_aadhar: aadhar.trim() }).sort({ created_at: -1 });
-    res.json({ success: true, count: bookings.length, bookings });
+    const bookings = await Booking.find({ farmer_aadhar: aadhar.trim() }).sort({ created_at: -1 }).lean();
+    const tokenIds = bookings.map(b => b.token_id);
+    const procurements = await Procurement.find({ token_id: { $in: tokenIds } }).lean();
+    const procMap = new Map(procurements.map(p => [p.token_id, p]));
+
+    const enrichedBookings = bookings.map(b => {
+      const proc = procMap.get(b.token_id);
+      const current_stage = proc ? proc.current_stage : (b.status === 'completed' ? 5 : (b.status === 'cancelled' ? 0 : 1));
+      return {
+        ...b,
+        current_stage,
+        procurement_status: proc?.status || b.status,
+        gate_pass: proc?.gate_pass || '',
+        gate_in_at: proc?.gate_in_at || null,
+        moisture_percent: proc?.moisture_percent || null,
+        purity_percent: proc?.purity_percent || null,
+        net_weight_quintals: proc?.net_weight_quintals || b.estimated_weight_quintals,
+        gross_payout: proc?.gross_payout || 0,
+        j_form_number: proc?.j_form_number || '',
+        rejection_stage: proc?.rejection_stage || null,
+        rejection_reason: proc?.rejection_reason || null
+      };
+    });
+
+    res.json({ success: true, count: enrichedBookings.length, bookings: enrichedBookings });
   } catch (err) {
     console.error('Error fetching farmer bookings:', err);
     res.status(500).json({ error: 'Failed to fetch farmer bookings.' });
@@ -295,16 +318,32 @@ router.get('/farmer/:aadhar', async (req, res) => {
 router.get('/token/:tokenId', async (req, res) => {
   try {
     const { tokenId } = req.params;
-    const booking = await Booking.findOne({ token_id: tokenId });
+    const booking = await Booking.findOne({ token_id: tokenId }).lean();
 
     if (!booking) {
       return res.status(404).json({ error: `Gate pass for Token ID ${tokenId} not found.` });
     }
 
     // Also fetch procurement progress if available
-    const procurement = await Procurement.findOne({ token_id: tokenId });
+    const procurement = await Procurement.findOne({ token_id: tokenId }).lean();
 
-    res.json({ success: true, booking, procurement });
+    const current_stage = procurement ? procurement.current_stage : (booking.status === 'completed' ? 5 : (booking.status === 'cancelled' ? 0 : 1));
+    const enrichedBooking = {
+      ...booking,
+      current_stage,
+      procurement_status: procurement?.status || booking.status,
+      gate_pass: procurement?.gate_pass || '',
+      gate_in_at: procurement?.gate_in_at || null,
+      moisture_percent: procurement?.moisture_percent || null,
+      purity_percent: procurement?.purity_percent || null,
+      net_weight_quintals: procurement?.net_weight_quintals || booking.estimated_weight_quintals,
+      gross_payout: procurement?.gross_payout || 0,
+      j_form_number: procurement?.j_form_number || '',
+      rejection_stage: procurement?.rejection_stage || null,
+      rejection_reason: procurement?.rejection_reason || null
+    };
+
+    res.json({ success: true, booking: enrichedBooking, procurement });
   } catch (err) {
     console.error('Error fetching gate pass:', err);
     res.status(500).json({ error: 'Failed to fetch gate pass details.' });

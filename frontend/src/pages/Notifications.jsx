@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const API_BASE = (import.meta.env.VITE_API_URL || '') + '/api/notifications';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '').replace(/\/$/, '') + '/api/notifications';
 
 /**
  * Utility to highlight key values (Token #, Rs. Amount, Quintals, Dates) in bold

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 const CROPS = [
   { name: 'Wheat (Sharbati A-Grade)', key: 'crop_wheat', code: 'WHT', msp: 2275, unit: '₹/Quintal' },
@@ -397,6 +397,34 @@ export default function SlotBooking() {
     }
   }, [selectedCentre?._id, selectedDate, fetchSlots]);
 
+  // Real-Time Live Sync on Active Tab & Window Focus
+  useEffect(() => {
+    if (!selectedFarmer.aadhar) return;
+
+    // Immediate sync
+    syncFarmerPassesFromServer(selectedFarmer.aadhar);
+
+    // Live polling every 3.5 seconds when looking at passes
+    const interval = setInterval(() => {
+      syncFarmerPassesFromServer(selectedFarmer.aadhar);
+    }, 3500);
+
+    const onFocusOrVisible = () => {
+      if (document.visibilityState === 'visible' && selectedFarmer.aadhar) {
+        syncFarmerPassesFromServer(selectedFarmer.aadhar);
+      }
+    };
+
+    window.addEventListener('focus', onFocusOrVisible);
+    document.addEventListener('visibilitychange', onFocusOrVisible);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocusOrVisible);
+      document.removeEventListener('visibilitychange', onFocusOrVisible);
+    };
+  }, [activeTab, selectedFarmer.aadhar, syncFarmerPassesFromServer]);
+
   // In-Place Reschedule Handlers for SlotBooking
   const fetchSlotsForReschedule = async (centreIdOrName, targetDate) => {
     setLoadingRescheduleSlots(true);
@@ -425,6 +453,11 @@ export default function SlotBooking() {
   };
 
   const handleOpenRescheduleModal = (pass) => {
+    if (!pass) return;
+    if (pass.current_stage >= 2 || pass.gate_in_at || (pass.gate_pass && pass.gate_pass !== '')) {
+      setErrorMessage(t('tracker_cannot_cancel_verified', 'Gate pass is verified at Mandi Gate. Consignment is currently under official processing.'));
+      return;
+    }
     setReschedulePass(pass);
     const nextDate = pass?.booking_date || todayLocal;
     setRescheduleDate(nextDate);
@@ -495,6 +528,11 @@ export default function SlotBooking() {
 
   // In-Place Cancellation Handlers for SlotBooking
   const handleOpenCancelModal = (pass) => {
+    if (!pass) return;
+    if (pass.current_stage >= 2 || pass.gate_in_at || (pass.gate_pass && pass.gate_pass !== '')) {
+      setErrorMessage(t('tracker_cannot_cancel_verified', 'Gate pass is verified at Mandi Gate. Consignment is currently under official processing.'));
+      return;
+    }
     setCancelPass(pass);
     setCancelReason('');
     setCancelCustomRemark('');
@@ -671,7 +709,7 @@ export default function SlotBooking() {
   const farmerPasses = Array.from(
     new Map(
       (allPasses || [])
-        .filter(p => p && p.farmer_aadhar === selectedFarmer?.aadhar && p.status !== 'completed' && p.status !== 'COMPLETED' && !paidTokenIds.has(p.token_id))
+        .filter(p => p && p.farmer_aadhar === selectedFarmer?.aadhar && p.status !== 'completed' && p.status !== 'COMPLETED' && p.procurement_status !== 'completed' && (!p.current_stage || p.current_stage < 5) && !paidTokenIds.has(p.token_id))
         .map(p => [p.token_id, p])
     ).values()
   );
@@ -680,7 +718,7 @@ export default function SlotBooking() {
   const settledPasses = Array.from(
     new Map([
       ...(allPasses || [])
-        .filter(p => p && p.farmer_aadhar === selectedFarmer?.aadhar && (p.status === 'completed' || p.status === 'COMPLETED' || paidTokenIds.has(p.token_id)))
+        .filter(p => p && p.farmer_aadhar === selectedFarmer?.aadhar && (p.status === 'completed' || p.status === 'COMPLETED' || p.procurement_status === 'completed' || p.current_stage >= 5 || paidTokenIds.has(p.token_id)))
         .map(p => {
           const matchedPayment = (farmerPayments || []).find(pay => pay && pay.token_id === p.token_id);
           return [
@@ -1130,7 +1168,11 @@ export default function SlotBooking() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
               {farmerPasses.map((pass) => {
-                const isCancelled = pass.status === 'cancelled';
+                const isCancelled = pass.status === 'cancelled' || pass.procurement_status === 'cancelled';
+                const isCompleted = pass.status === 'completed' || pass.procurement_status === 'completed' || (pass.current_stage && pass.current_stage >= 5);
+                const isRejected = pass.status === 'rejected' || pass.procurement_status === 'rejected';
+                const isGateVerified = !isCancelled && !isRejected && (pass.current_stage >= 2 || Boolean(pass.gate_in_at) || Boolean(pass.gate_pass && pass.gate_pass !== ''));
+                const canRescheduleOrCancel = !isCancelled && !isCompleted && !isRejected && !isGateVerified;
 
                 return (
                   <div
@@ -1138,6 +1180,8 @@ export default function SlotBooking() {
                     className={`border-2 rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${
                       isCancelled
                         ? 'border-gray-300 bg-gray-50/80 opacity-80'
+                        : isGateVerified
+                        ? 'border-emerald-300 bg-gradient-to-br from-emerald-50/60 via-white to-white ring-1 ring-emerald-200'
                         : 'border-emerald-100 hover:border-emerald-500 bg-gradient-to-br from-emerald-50/40 via-white to-white'
                     }`}
                   >
@@ -1149,9 +1193,19 @@ export default function SlotBooking() {
                         <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
                           isCancelled
                             ? 'bg-gray-200 text-gray-800 border border-gray-400'
+                            : isRejected
+                            ? 'bg-red-600 text-white'
+                            : isGateVerified
+                            ? 'bg-emerald-700 text-white border border-emerald-800 ring-1 ring-emerald-400'
                             : 'bg-emerald-600 text-white'
                         }`}>
-                          {isCancelled ? t('tracker_cancelled_badge', '🚫 Cancelled') : (pass.status || 'CONFIRMED')}
+                          {isCancelled 
+                            ? t('tracker_cancelled_badge', '🚫 Cancelled') 
+                            : isRejected
+                            ? 'REJECTED'
+                            : isGateVerified 
+                            ? `${t('tracker_gate_in_status', 'GATE VERIFIED')} • S${pass.current_stage || 2}`
+                            : (pass.status || 'CONFIRMED')}
                         </span>
                       </div>
 
@@ -1169,7 +1223,7 @@ export default function SlotBooking() {
                         </div>
                         <div>
                           <span className="text-gray-400 block">{t('sb_pass_allotted')}</span>
-                          <span className="font-bold text-emerald-700">{pass.estimated_weight_quintals} {t('sb_quintals')}</span>
+                          <span className="font-bold text-emerald-700">{pass.net_weight_quintals || pass.estimated_weight_quintals} {t('sb_quintals')}</span>
                         </div>
                         <div>
                           <span className="text-gray-400 block">{t('sb_pass_farmer')}</span>
@@ -1202,8 +1256,8 @@ export default function SlotBooking() {
                         </button>
                       </div>
 
-                      {/* Pre-Gate Reschedule & Cancel Buttons */}
-                      {!isCancelled && (
+                      {/* Pre-Gate Reschedule & Cancel Buttons OR Gate Verified Badge */}
+                      {canRescheduleOrCancel ? (
                         <div className="flex gap-2 pt-1 border-t border-gray-100">
                           <button
                             onClick={() => handleOpenRescheduleModal(pass)}
@@ -1220,7 +1274,19 @@ export default function SlotBooking() {
                             <span>{t('tracker_cancel_btn', 'Cancel Gate Pass')}</span>
                           </button>
                         </div>
-                      )}
+                      ) : isGateVerified ? (
+                        <div className="pt-2 border-t border-gray-100">
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-xs flex items-center justify-between text-emerald-900">
+                            <div className="flex items-center gap-1.5 font-bold">
+                              <span>🛡️</span>
+                              <span>{t('tracker_gate_verified_badge', 'Gate Pass Verified at Mandi')}</span>
+                            </div>
+                            <span className="text-2xs bg-emerald-700 text-white font-extrabold px-2 py-0.5 rounded-full">
+                              {t('tracker_stage_badge', 'Stage')} {pass.current_stage || 2}/5
+                            </span>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -2140,34 +2206,54 @@ export default function SlotBooking() {
                 ✕ {t('close')}
               </button>
 
-              <div className="flex flex-wrap gap-2">
-                {activePassModal.status !== 'cancelled' && (
-                  <>
-                    <button
-                      onClick={() => {
-                        const p = activePassModal;
-                        setActivePassModal(null);
-                        handleOpenRescheduleModal(p);
-                      }}
-                      className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>📅</span>
-                      <span>{t('tracker_reschedule_btn', 'Reschedule Slot')}</span>
-                    </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {(() => {
+                  const isModalCancelled = activePassModal.status === 'cancelled' || activePassModal.procurement_status === 'cancelled';
+                  const isModalCompleted = activePassModal.status === 'completed' || activePassModal.procurement_status === 'completed' || (activePassModal.current_stage && activePassModal.current_stage >= 5);
+                  const isModalRejected = activePassModal.status === 'rejected' || activePassModal.procurement_status === 'rejected';
+                  const isModalGateVerified = !isModalCancelled && !isModalRejected && (activePassModal.current_stage >= 2 || Boolean(activePassModal.gate_in_at) || Boolean(activePassModal.gate_pass && activePassModal.gate_pass !== ''));
+                  const canModalRescheduleOrCancel = !isModalCancelled && !isModalCompleted && !isModalRejected && !isModalGateVerified;
 
-                    <button
-                      onClick={() => {
-                        const p = activePassModal;
-                        setActivePassModal(null);
-                        handleOpenCancelModal(p);
-                      }}
-                      className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>🚫</span>
-                      <span>{t('tracker_cancel_btn', 'Cancel Gate Pass')}</span>
-                    </button>
-                  </>
-                )}
+                  if (!canModalRescheduleOrCancel) {
+                    if (isModalGateVerified) {
+                      return (
+                        <div className="bg-emerald-50 text-emerald-900 border border-emerald-300 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                          <span>🛡️</span>
+                          <span>{t('tracker_gate_verified_badge', 'Gate Pass Verified at Mandi')}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }
+
+                  return (
+                    <>
+                      <button
+                        onClick={() => {
+                          const p = activePassModal;
+                          setActivePassModal(null);
+                          handleOpenRescheduleModal(p);
+                        }}
+                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>📅</span>
+                        <span>{t('tracker_reschedule_btn', 'Reschedule Slot')}</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          const p = activePassModal;
+                          setActivePassModal(null);
+                          handleOpenCancelModal(p);
+                        }}
+                        className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>🚫</span>
+                        <span>{t('tracker_cancel_btn', 'Cancel Gate Pass')}</span>
+                      </button>
+                    </>
+                  );
+                })()}
 
                 <button
                   onClick={() => {

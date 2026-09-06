@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from "react-i18next";
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
-const API_BASE = (import.meta.env.VITE_API_URL || '') + '/api/payments';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '').replace(/\/$/, '') + '/api/payments';
 
 const getCropDisplayName = (cropName, t) => {
   if (!cropName) return '';
