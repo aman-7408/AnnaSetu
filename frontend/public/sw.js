@@ -101,3 +101,20 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+
+// 3. Notification Click: Open or focus AnnaSetu PWA when user taps mobile notification banner
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(event.notification?.data?.url || '/');
+      }
+    })
+  );
+});

@@ -293,22 +293,42 @@ export default function Notifications() {
     }
   };
 
-  // Helper to fire Native Smartphone OS Notification Popup + Vibration
-  const triggerNativeOSNotification = (title, message) => {
-    if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
+  // Helper to fire Native Smartphone OS Notification Popup + Vibration (Mobile & Desktop)
+  const triggerNativeOSNotification = async (title, message) => {
+    if (typeof window === 'undefined' || !('Notification' in window) || window.Notification.permission !== 'granted') {
+      return;
+    }
+
+    const options = {
+      body: message,
+      icon: '/logo.png',
+      badge: '/logo.png',
+      tag: 'annasetu-alert-' + Date.now(),
+      vibrate: [200, 100, 200],
+      data: { url: '/notifications' }
+    };
+
+    // 1. Android Mobile & PWA Mode (Required by Android Chrome)
+    if ('serviceWorker' in navigator) {
       try {
-        const notif = new window.Notification(title, {
-          body: message,
-          icon: '/logo.png',
-          tag: Date.now().toString(),
-          vibrate: [200, 100, 200]
-        });
-        notif.onclick = () => {
-          window.focus();
-        };
-      } catch (err) {
-        console.error('Native push notification error:', err);
+        const registration = await navigator.serviceWorker.ready;
+        if (registration && registration.showNotification) {
+          await registration.showNotification(title, options);
+          return;
+        }
+      } catch (swErr) {
+        console.warn('Service worker notification fallback:', swErr);
       }
+    }
+
+    // 2. Desktop Fallback (Mac / Windows / Linux browsers)
+    try {
+      const notif = new window.Notification(title, options);
+      notif.onclick = () => {
+        window.focus();
+      };
+    } catch (err) {
+      console.error('Desktop notification error:', err);
     }
   };
 
