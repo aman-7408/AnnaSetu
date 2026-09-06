@@ -289,10 +289,10 @@ export default function SlotBooking() {
     }
   }, []);
 
-  const syncFarmerPassesFromServer = useCallback(async (aadhar) => {
+  const syncFarmerPassesFromServer = useCallback(async (aadhar, isManual = false) => {
     if (!aadhar) return;
     try {
-      setLoadingPasses(true);
+      if (isManual) setLoadingPasses(true);
       let res;
       try {
         res = await fetch(`${API_BASE}/api/bookings/farmer/${aadhar}`);
@@ -327,7 +327,7 @@ export default function SlotBooking() {
     } catch (err) {
       console.warn('Error syncing passes from server:', err);
     } finally {
-      setLoadingPasses(false);
+      if (isManual) setLoadingPasses(false);
     }
   }, []);
 
@@ -397,21 +397,21 @@ export default function SlotBooking() {
     }
   }, [selectedCentre?._id, selectedDate, fetchSlots]);
 
-  // Real-Time Live Sync on Active Tab & Window Focus
+  // Real-Time Live Sync on Active Tab & Window Focus (Completely Silent)
   useEffect(() => {
     if (!selectedFarmer.aadhar) return;
 
-    // Immediate sync
-    syncFarmerPassesFromServer(selectedFarmer.aadhar);
+    // Immediate silent sync
+    syncFarmerPassesFromServer(selectedFarmer.aadhar, false);
 
-    // Live polling every 3.5 seconds when looking at passes
+    // Live polling every 6 seconds when viewing active passes
     const interval = setInterval(() => {
-      syncFarmerPassesFromServer(selectedFarmer.aadhar);
-    }, 3500);
+      syncFarmerPassesFromServer(selectedFarmer.aadhar, false);
+    }, 6000);
 
     const onFocusOrVisible = () => {
       if (document.visibilityState === 'visible' && selectedFarmer.aadhar) {
-        syncFarmerPassesFromServer(selectedFarmer.aadhar);
+        syncFarmerPassesFromServer(selectedFarmer.aadhar, false);
       }
     };
 
@@ -1111,7 +1111,7 @@ export default function SlotBooking() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={() => syncFarmerPassesFromServer(selectedFarmer.aadhar)}
+                onClick={() => syncFarmerPassesFromServer(selectedFarmer.aadhar, true)}
                 disabled={loadingPasses}
                 className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
@@ -1134,7 +1134,7 @@ export default function SlotBooking() {
             </div>
           )}
 
-          {loadingPasses ? (
+          {loadingPasses && allPasses.length === 0 ? (
             <div className="py-16 text-center text-gray-500">
               <div className="inline-block w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
               <p className="text-sm font-semibold">...</p>
@@ -1311,7 +1311,7 @@ export default function SlotBooking() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={() => syncFarmerPassesFromServer(selectedFarmer.aadhar)}
+                onClick={() => syncFarmerPassesFromServer(selectedFarmer.aadhar, true)}
                 disabled={loadingPasses}
                 className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
