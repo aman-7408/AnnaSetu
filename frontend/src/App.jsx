@@ -7,6 +7,7 @@ import AdminLoginModal from './components/AdminLoginModal';
 import FarmerLoginModal from './components/FarmerLoginModal';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import InstallPwaBanner from './components/InstallPwaBanner';
+import { API_NOTIFICATIONS } from './config/api';
 
 const Registration = lazy(() => import('./pages/Registration'));
 const SlotBooking = lazy(() => import('./pages/SlotBooking'));
@@ -73,13 +74,7 @@ function NavigationBar({ userSession, onAdminClick, farmerSession, onFarmerLogin
     try {
       const farmerId = farmerSession?.aadhar || localStorage.getItem('farmer_aadhar');
       if (!farmerId) return;
-      const apiBase = import.meta.env.VITE_API_URL || '';
-      let res;
-      try {
-        res = await fetch(`${apiBase}/api/notifications/farmer/${farmerId}?unread_only=true`);
-      } catch {
-        res = await fetch(`/api/notifications/farmer/${farmerId}?unread_only=true`);
-      }
+      const res = await fetch(`${API_NOTIFICATIONS}/farmer/${farmerId}?unread_only=true`);
       if (res && res.ok) {
         const data = await res.json();
         if (data.success) {

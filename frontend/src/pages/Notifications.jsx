@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { API_NOTIFICATIONS } from '../config/api';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '').replace(/\/$/, '') + '/api/notifications';
+const API_BASE = API_NOTIFICATIONS;
 
 /**
  * Utility to highlight key values (Token #, Rs. Amount, Quintals, Dates) in bold
@@ -266,71 +267,8 @@ export default function Notifications() {
   const [triggering, setTriggering]           = useState(false);
   const [showTestMenu, setShowTestMenu]       = useState(false);
 
-  // Native Browser Notification Permission State
-  const [pushPermission, setPushPermission]   = useState('default');
-  const knownNotifIdsRef                      = useRef(new Set());
-
   // Expanded state lives only in memory — resets on every page visit
   const [expandedId, setExpandedId]           = useState(null);
-
-  // Check & Request Native Push Notification Permission
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setPushPermission(window.Notification.permission);
-    }
-  }, []);
-
-  const requestPushPermission = async () => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      const perm = await window.Notification.requestPermission();
-      setPushPermission(perm);
-      if (perm === 'granted') {
-        triggerNativeOSNotification(
-          '🔔 Phone Alerts Enabled!',
-          'You will now get instant sound and vibration updates for all your mandi dates and payments.'
-        );
-      }
-    }
-  };
-
-  // Helper to fire Native Smartphone OS Notification Popup + Vibration (Mobile & Desktop)
-  const triggerNativeOSNotification = async (title, message) => {
-    if (typeof window === 'undefined' || !('Notification' in window) || window.Notification.permission !== 'granted') {
-      return;
-    }
-
-    const options = {
-      body: message,
-      icon: '/logo.png',
-      badge: '/logo.png',
-      tag: 'annasetu-alert-' + Date.now(),
-      vibrate: [200, 100, 200],
-      data: { url: '/notifications' }
-    };
-
-    // 1. Android Mobile & PWA Mode (Required by Android Chrome)
-    if ('serviceWorker' in navigator) {
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        if (registration && registration.showNotification) {
-          await registration.showNotification(title, options);
-          return;
-        }
-      } catch (swErr) {
-        console.warn('Service worker notification fallback:', swErr);
-      }
-    }
-
-    // 2. Desktop Fallback (Mac / Windows / Linux browsers)
-    try {
-      const notif = new window.Notification(title, options);
-      notif.onclick = () => {
-        window.focus();
-      };
-    } catch (err) {
-      console.error('Desktop notification error:', err);
-    }
-  };
 
   // ── Fetch notifications from backend ──────────────────────────────────────
   const fetchNotifications = async (showLoading = false) => {
@@ -342,18 +280,6 @@ export default function Notifications() {
       const data = await res.json();
 
       const fetchedList = data.notifications || [];
-
-      // Check for BRAND NEW notifications to trigger Native Phone OS Banner
-      if (knownNotifIdsRef.current.size > 0) {
-        const brandNewItems = fetchedList.filter(n => !knownNotifIdsRef.current.has(n._id));
-        brandNewItems.forEach(newItem => {
-          triggerNativeOSNotification(newItem.title, newItem.message);
-        });
-      }
-
-      // Update set of known IDs
-      fetchedList.forEach(n => knownNotifIdsRef.current.add(n._id));
-
       setNotifications(fetchedList);
       setUnreadCount(data.unread_count || 0);
     } catch (err) {
@@ -436,11 +362,6 @@ export default function Notifications() {
       });
       const result = await res.json();
       
-      // If native push is granted, trigger phone banner immediately
-      if (result.notification) {
-        triggerNativeOSNotification(result.notification.title, result.notification.message);
-      }
-
       await fetchNotifications(false);
     } catch (err) {
       console.error('Failed to trigger test notification:', err);
@@ -492,22 +413,6 @@ export default function Notifications() {
 
   return (
     <div className="py-4 px-3 sm:py-8 sm:px-4 max-w-3xl mx-auto space-y-4 sm:space-y-6">
-
-      {/* ── Farmer-Friendly Push Notification Banner ── */}
-      {pushPermission !== 'granted' && (
-        <div className="bg-emerald-900 text-white rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
-          <div className="flex items-center gap-2">
-            <span className="text-base">🔔</span>
-            <span className="font-semibold">{t("notif_phone_alerts_msg")}</span>
-          </div>
-          <button
-            onClick={requestPushPermission}
-            className="bg-emerald-500 hover:bg-emerald-400 text-white px-3 py-1.5 rounded-lg font-bold transition shrink-0 cursor-pointer"
-          >
-            {t("notif_turn_on_btn")}
-          </button>
-        </div>
-      )}
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between">
