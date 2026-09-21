@@ -1,0 +1,1 @@
+This is a webpage + web app for farmers(main users) to register themselves online and book slots in the procurement centres so that they don't have to wait in long queues and can also track their payment status via the app itself. 
